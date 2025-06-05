@@ -1,0 +1,1298 @@
+//@version=6
+indicator("BB RSI POE 7", overlay=true, max_labels_count=500)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BB RSI ATR Strategy V4.6 - LÓGICA MATEMÁTICA CORREGIDA + TP/SL SEPARADOS
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// CORRECCIÓN PRINCIPAL: Total Trades = TP1 + SL + ND
+// - Eliminado doble conteo en cierre por dirección opuesta
+// - Cada operación se cuenta UNA SOLA VEZ al cerrar definitivamente
+// - Sistema ND integrado para operaciones indeterminadas
+// 
+// NUEVA FUNCIONALIDAD: TP/SL Separados por Dirección
+// - Parámetros independientes para LONG y SHORT
+// - Botón de unificación para compatibilidad total
+// - Optimización independiente por dirección
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Input Parameters
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// 1. CONFIGURACIÓN DE FECHA
+var DATE_GROUP = "Configuración de Fecha"
+startDay = input.int(1, title="Start D", minval=1, maxval=31, inline="start_date", group=DATE_GROUP)
+startMonth = input.int(1, title="M", minval=1, maxval=12, inline="start_date", group=DATE_GROUP)
+startYear = input.int(2023, title="Y", minval=1970, maxval=2100, inline="start_date", group=DATE_GROUP)
+
+endDay = input.int(31, title="End D", minval=1, maxval=31, inline="end_date", group=DATE_GROUP)
+endMonth = input.int(5, title="M", minval=1, maxval=12, inline="end_date", group=DATE_GROUP)
+endYear = input.int(2025, title="Y", minval=1970, maxval=2100, inline="end_date", group=DATE_GROUP)
+
+startDate = timestamp(startYear, startMonth, startDay, 0, 0)
+endDate = timestamp(endYear, endMonth, endDay, 23, 59, 59)
+
+// 2. TP/SL SETTINGS - MODIFICADO: ETIQUETAS CORTAS Y TP2 AL FINAL
+tpslGroup = "TP/SL SETTINGS"
+unifiedTPSL = input.bool(true, title="🔗 Unified TP/SL for Long & Short", group=tpslGroup, tooltip="ON: Same TP/SL for both directions | OFF: Separate TP/SL for Long and Short")
+
+// PARÁMETROS UNIFICADOS (cuando unifiedTPSL = true)
+fixedSL = input.float(2.0, title="SL%", minval=0.1, step=0.1, group=tpslGroup, inline="unified_params", tooltip="Stop Loss percentage for both Long and Short")
+fixedTP1 = input.float(2.0, title="TP1%", minval=0.1, step=0.1, group=tpslGroup, inline="unified_params", tooltip="Take Profit 1 percentage for both directions")
+fixedTP2 = input.float(2.2, title="TP2%", minval=0.1, step=0.1, group=tpslGroup, inline="unified_params", tooltip="Take Profit 2 percentage for both directions")
+
+// PARÁMETROS SEPARADOS PARA LONG - ETIQUETAS CORTAS
+longSL = input.float(2.0, title="L SL%", minval=0.1, step=0.1, group=tpslGroup, inline="long_params", tooltip="Stop Loss percentage for Long trades only")
+longTP1 = input.float(2.0, title="L TP1%", minval=0.1, step=0.1, group=tpslGroup, inline="long_params", tooltip="Take Profit 1 percentage for Long trades only")
+longTP2 = input.float(2.2, title="L TP2%", minval=0.1, step=0.1, group=tpslGroup, inline="long_params", tooltip="Take Profit 2 percentage for Long trades only")
+
+// PARÁMETROS SEPARADOS PARA SHORT - ETIQUETAS CORTAS
+shortSL = input.float(2.0, title="S SL%", minval=0.1, step=0.1, group=tpslGroup, inline="short_params", tooltip="Stop Loss percentage for Short trades only")
+shortTP1 = input.float(2.0, title="S TP1%", minval=0.1, step=0.1, group=tpslGroup, inline="short_params", tooltip="Take Profit 1 percentage for Short trades only")
+shortTP2 = input.float(2.2, title="S TP2%", minval=0.1, step=0.1, group=tpslGroup, inline="short_params", tooltip="Take Profit 2 percentage for Short trades only")
+
+// TP2 CONTROL - MOVIDO AL FINAL DE LA SECCIÓN
+useTP2 = input.bool(true, title="Use TP2", group=tpslGroup)
+
+// 3. BOLLINGER BANDS
+bbGroup = "Bollinger Bands"
+bbLength = input.int(11, title="BB Length", minval=1, group=bbGroup)
+bbMult = input.float(2.1, title="Desviación estándar BB", minval=0.1, step=0.1, group=bbGroup)
+showBB = input.bool(true, title="Show Bollinger Bands", group=bbGroup)
+
+// 4. RSI
+rsiGroup = "RSI"
+rsiLength = input.int(19, title="Longitud RSI", minval=1, group=rsiGroup)
+rsiOverbought = input.int(68, title="RSI Overbought", minval=50, maxval=100, group=rsiGroup)
+rsiOversold = input.int(29, title="RSI Oversold", minval=0, maxval=50, group=rsiGroup)
+showRSI = input.bool(false, title="Show RSI", group=rsiGroup)
+
+// 5. SIGNAL SAFETY
+safetyGroup = "Signal Safety"
+useSecurityCandle = input.bool(true, title="Use Candle Security Margin", group=safetyGroup)
+securityCandle = input.int(11, title="Security Candle Count", minval=1, group=safetyGroup)
+useVolumeFilter = input.bool(true, title="Use Volume Filter", group=safetyGroup)
+volumenLength = input.int(12, title="Volume Average Length", minval=1, group=safetyGroup)
+percentVolume = input.float(1.4, title="Volume Threshold Multiplier", minval=0.1, step=0.1, group=safetyGroup)
+allowSequentialSignals = input.bool(false, title="Allow Sequential Signals", group=safetyGroup)
+
+// 6. ATR SETTINGS - ETIQUETAS CORTAS APLICADAS
+atrGroup = "ATR SETTINGS"
+useATR = input.bool(false, title="Use ATR for TP/SL Calculation", group=atrGroup)
+atrLength = input.int(14, title="Longitud ATR", minval=1, group=atrGroup)
+unifiedATR = input.bool(true, title="🔗 Unified ATR Multipliers", group=atrGroup, tooltip="ON: Same ATR multipliers for both directions | OFF: Separate ATR multipliers")
+
+// ATR UNIFICADOS
+atrMultSL = input.float(1.5, title="ATR x SL", minval=0.1, step=0.1, group=atrGroup, inline="atr_unified")
+atrMultTP1 = input.float(2.0, title="ATR x TP1", minval=0.1, step=0.1, group=atrGroup, inline="atr_unified")
+atrMultTP2 = input.float(3.0, title="ATR x TP2", minval=0.1, step=0.1, group=atrGroup, inline="atr_unified")
+
+// ATR SEPARADOS PARA LONG - ETIQUETAS CORTAS
+longATRMultSL = input.float(1.5, title="L ATR x SL", minval=0.1, step=0.1, group=atrGroup, inline="atr_long")
+longATRMultTP1 = input.float(2.0, title="L ATR x TP1", minval=0.1, step=0.1, group=atrGroup, inline="atr_long")
+longATRMultTP2 = input.float(3.0, title="L ATR x TP2", minval=0.1, step=0.1, group=atrGroup, inline="atr_long")
+
+// ATR SEPARADOS PARA SHORT - ETIQUETAS CORTAS
+shortATRMultSL = input.float(1.5, title="S ATR x SL", minval=0.1, step=0.1, group=atrGroup, inline="atr_short")
+shortATRMultTP1 = input.float(2.0, title="S ATR x TP1", minval=0.1, step=0.1, group=atrGroup, inline="atr_short")
+shortATRMultTP2 = input.float(3.0, title="S ATR x TP2", minval=0.1, step=0.1, group=atrGroup, inline="atr_short")
+
+// 7. VISUALIZATION
+vizGroup = "Visualization"
+showEntryExitLines = input.bool(true, title="Show Entry/SL/TP Lines", group=vizGroup)
+showStats = input.bool(true, title="Show Statistics Table", group=vizGroup)
+showDetailedStats = input.bool(true, title="Show Detailed Statistics", group=vizGroup)
+showBarInfo = input.bool(true, title="Show Bar Limitation Info", group=vizGroup)
+showYearlyStats = input.bool(true, title="Show Yearly Statistics", group=vizGroup)
+maxVisibleTrades = input.int(5, title="Max Visible Trades", minval=1, maxval=5, group=vizGroup)
+showParametersTable = input.bool(false, title="Show Parameters Table", group=vizGroup)
+showNDLabels = input.bool(true, title="Show ND Labels", group=vizGroup)
+
+// 8. LABEL POSITION
+labelGroup = "Label Position"
+labelVerticalMultiplier = input.float(1.5, title="Label Vertical Distance (ATR multiplier)", minval=0.5, step=0.5, group=labelGroup)
+labelHorizontalOffset = input.int(5, title="Label Horizontal Offset (bars)", minval=0, maxval=20, group=labelGroup)
+
+// 9. DEPURACIÓN
+debugGroup = "Depuración"
+showDebugTable = input.bool(false, title="Mostrar Tabla de Depuración", group=debugGroup)
+showGeneralSignals = input.bool(true, title="Mostrar Puntos de Señal", group=debugGroup)
+
+// 10. VALORES DE ENTRADA
+entryGroup = "Valores de Entrada"
+showEntryStatus = input.bool(false, title="Entradas en línea de estado", group=entryGroup)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Bar Limitation Analysis
+// ═══════════════════════════════════════════════════════════════════════════════
+
+tfInMinutes = timeframe.in_seconds() / 60
+barsPerDay = 1440 / tfInMinutes
+maxHistoryDays = 20000 / barsPerDay
+
+var float firstBarTimestamp = na
+if barstate.isfirst
+    firstBarTimestamp := time
+
+var float actualStartDate = na
+var float actualEndDate = na
+var string actualStartDateStr = na
+var string actualEndDateStr = na
+var float requestedStartDate = startDate
+var float requestedEndDate = endDate
+var float coveragePercentage = 100.0
+
+if barstate.islast
+    actualStartDate := firstBarTimestamp
+    actualEndDate := time
+    actualStartDateStr := str.format("{0,date,yyyy-MM-dd}", actualStartDate)
+    actualEndDateStr := str.format("{0,date,yyyy-MM-dd}", actualEndDate)
+    requestedDuration = requestedEndDate - requestedStartDate
+    actualDuration = actualEndDate - actualStartDate
+    
+    if actualStartDate < requestedStartDate
+        actualStartDate := requestedStartDate
+        actualStartDateStr := str.format("{0,date,yyyy-MM-dd}", actualStartDate)
+        actualDuration := actualEndDate - actualStartDate
+    
+    if requestedDuration > 0
+        coveragePercentage := math.min(100.0, (actualDuration / requestedDuration) * 100.0)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Indicator Calculations
+// ═══════════════════════════════════════════════════════════════════════════════
+
+isInDateRange = time >= startDate and time <= endDate
+[middle, upper, lower] = ta.bb(close, bbLength, bbMult)
+rsi = ta.rsi(close, rsiLength)
+atr = ta.atr(atrLength)
+volAvg = ta.sma(volume, volumenLength)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Signal Generation System (3 Phases) - SIN CAMBIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var bool phase1Long = false
+var bool phase2Long = false
+var bool phase1Short = false
+var bool phase2Short = false
+var int signalBarIndex = 0
+
+volumeConfirmation = volume > volAvg * percentVolume
+
+condition1SNLong = close < lower and rsi < rsiOversold and (not useVolumeFilter or volumeConfirmation)
+condition1SNShort = close > upper and rsi > rsiOverbought and (not useVolumeFilter or volumeConfirmation)
+
+if barstate.isconfirmed
+    phase1Long := condition1SNLong
+    phase1Short := condition1SNShort
+
+condition2SNLong = phase1Long[1] and (close > lower or rsi > rsi[1])
+condition2SNShort = phase1Short[1] and (close < upper or rsi < rsi[1])
+
+if barstate.isconfirmed
+    phase2Long := condition2SNLong
+    phase2Short := condition2SNShort
+
+noRecentSignal = bar_index - signalBarIndex >= securityCandle
+longSignal = phase2Long[1] and isInDateRange and (not useSecurityCandle or noRecentSignal)
+shortSignal = phase2Short[1] and isInDateRange and (not useSecurityCandle or noRecentSignal)
+
+if (longSignal or shortSignal)
+    signalBarIndex := bar_index
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Visualización de señales - SIN CAMBIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+plotshape(phase1Long and showGeneralSignals, title="1SNLong", style=shape.circle, location=location.belowbar, 
+          color=color.new(color.blue, 50), size=size.tiny, display=display.none)
+plotshape(phase1Short and showGeneralSignals, title="1SNShort", style=shape.circle, location=location.abovebar, 
+          color=color.new(color.blue, 50), size=size.tiny, display=display.none)
+
+plotshape(phase2Long and showGeneralSignals, title="2SNLong", style=shape.diamond, location=location.belowbar, 
+          color=color.new(color.green, 30), size=size.tiny, display=display.none)
+plotshape(phase2Short and showGeneralSignals, title="2SNShort", style=shape.diamond, location=location.abovebar, 
+          color=color.new(color.red, 30), size=size.tiny, display=display.none)
+
+if longSignal
+    label.new(bar_index, low - atr, "L", color=color.green, style=label.style_label_up, textcolor=color.white, size=size.normal)
+    
+if shortSignal
+    label.new(bar_index, high + atr, "S", color=color.red, style=label.style_label_down, textcolor=color.white, size=size.normal)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Trade Management Functions - MODIFICADA PARA SOPORTAR PARÁMETROS SEPARADOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+calculateLevels(entryPrice, isLong) =>
+    float sl = 0.0
+    float tp1 = 0.0
+    float tp2 = 0.0
+    
+    if useATR
+        // SELECCIONAR MULTIPLICADORES ATR SEGÚN CONFIGURACIÓN
+        currentATRSL = unifiedATR ? atrMultSL : (isLong ? longATRMultSL : shortATRMultSL)
+        currentATRTP1 = unifiedATR ? atrMultTP1 : (isLong ? longATRMultTP1 : shortATRMultTP1)
+        currentATRTP2 = unifiedATR ? atrMultTP2 : (isLong ? longATRMultTP2 : shortATRMultTP2)
+        
+        if isLong
+            sl := entryPrice - atr * currentATRSL
+            tp1 := entryPrice + atr * currentATRTP1
+            tp2 := entryPrice + atr * currentATRTP2
+        else
+            sl := entryPrice + atr * currentATRSL
+            tp1 := entryPrice - atr * currentATRTP1
+            tp2 := entryPrice - atr * currentATRTP2
+    else
+        // SELECCIONAR PARÁMETROS FIJOS SEGÚN CONFIGURACIÓN
+        currentSL = unifiedTPSL ? fixedSL : (isLong ? longSL : shortSL)
+        currentTP1 = unifiedTPSL ? fixedTP1 : (isLong ? longTP1 : shortTP1)
+        currentTP2 = unifiedTPSL ? fixedTP2 : (isLong ? longTP2 : shortTP2)
+        
+        if isLong
+            sl := entryPrice * (1 - currentSL/100)
+            tp1 := entryPrice * (1 + currentTP1/100)
+            tp2 := entryPrice * (1 + currentTP2/100)
+        else
+            sl := entryPrice * (1 + currentSL/100)
+            tp1 := entryPrice * (1 - currentTP1/100)
+            tp2 := entryPrice * (1 - currentTP2/100)
+    
+    [sl, tp1, tp2]
+
+createEntryLabel(price, sl, tp1, tp2, isLong, tradeId) =>
+    if showEntryExitLines
+        string labelText = isLong ? "LONG" : "SHORT"
+        if allowSequentialSignals
+            labelText += " #" + str.tostring(tradeId)
+        labelText += "\nEntry: " + str.tostring(price, "#.####") + 
+                     "\nSL: " + str.tostring(sl, "#.####") + 
+                     "\nTP1: " + str.tostring(tp1, "#.####")
+        
+        if useTP2
+            labelText += "\nTP2: " + str.tostring(tp2, "#.####")
+            
+        color labelColor = isLong ? color.green : color.red
+        float verticalOffset = atr * labelVerticalMultiplier
+        float labelY = isLong ? math.min(low, sl) - verticalOffset : math.max(high, sl) + verticalOffset
+        int horizontalPos = bar_index + labelHorizontalOffset
+        
+        label.new(horizontalPos, labelY, labelText, color=labelColor, 
+             style=isLong ? label.style_label_up : label.style_label_down, textcolor=color.white)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Trade State Variables - SIN CAMBIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+type Trade
+    int id
+    float entryPrice
+    float stopLoss
+    float takeProfit1
+    float takeProfit2
+    int direction
+    bool tp1Hit
+    bool tp2Hit
+    bool slHit
+    int entryBar
+
+var Trade[] activeTrades = array.new<Trade>()
+var int tradeIdCounter = 0
+var bool pendingLongEntry = false
+var bool pendingShortEntry = false
+
+// Statistics counters - SIN CAMBIOS
+var int totalTrades = 0
+var int longTrades = 0
+var int shortTrades = 0
+var int tp1Count = 0
+var int tp2Count = 0
+var int slCount = 0
+var int ndCount = 0
+var int longTP1Count = 0
+var int longTP2Count = 0
+var int longSLCount = 0
+var int longNDCount = 0
+var int shortTP1Count = 0
+var int shortTP2Count = 0
+var int shortSLCount = 0
+var int shortNDCount = 0
+
+var int currentLossStreak = 0
+var int maxLossStreak = 0
+var int currentWinStreak = 0
+var int maxWinStreak = 0
+var int operationsAfterLoss = 0
+var int winsAfterLoss = 0
+var bool lastOpWasLoss = false
+
+var map<int, int> yearlyTotalTrades = map.new<int, int>()
+var map<int, int> yearlyLongTrades = map.new<int, int>()
+var map<int, int> yearlyShortTrades = map.new<int, int>()
+var map<int, int> yearlyTP1Count = map.new<int, int>()
+var map<int, int> yearlyNDCount = map.new<int, int>()
+
+// FUNCIÓN PARA DETECTAR ND - SIN CAMBIOS
+isNDTrade(trade) =>
+    if trade.direction == 1
+        (low <= trade.stopLoss and high >= trade.takeProfit1) or (low <= trade.stopLoss and high >= trade.takeProfit2)
+    else
+        (high >= trade.stopLoss and low <= trade.takeProfit1) or (high >= trade.stopLoss and low <= trade.takeProfit2)
+
+updateYearlyStats(tradeYear, isLong, isTP1Hit, isND) =>
+    if not map.contains(yearlyTotalTrades, tradeYear)
+        map.put(yearlyTotalTrades, tradeYear, 0)
+        map.put(yearlyLongTrades, tradeYear, 0)
+        map.put(yearlyShortTrades, tradeYear, 0)
+        map.put(yearlyTP1Count, tradeYear, 0)
+        map.put(yearlyNDCount, tradeYear, 0)
+    
+    map.put(yearlyTotalTrades, tradeYear, map.get(yearlyTotalTrades, tradeYear) + 1)
+    
+    if isLong
+        map.put(yearlyLongTrades, tradeYear, map.get(yearlyLongTrades, tradeYear) + 1)
+    else
+        map.put(yearlyShortTrades, tradeYear, map.get(yearlyShortTrades, tradeYear) + 1)
+    
+    if isTP1Hit and not isND
+        map.put(yearlyTP1Count, tradeYear, map.get(yearlyTP1Count, tradeYear) + 1)
+    
+    if isND
+        map.put(yearlyNDCount, tradeYear, map.get(yearlyNDCount, tradeYear) + 1)
+
+hasActiveTradeInDirection(direction) =>
+    result = false
+    if array.size(activeTrades) > 0
+        for i = 0 to array.size(activeTrades) - 1
+            trade = array.get(activeTrades, i)
+            if trade.direction == direction
+                result := true
+                break
+    result
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Signal Processing - SIN CAMBIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+if longSignal
+    if allowSequentialSignals or not hasActiveTradeInDirection(1)
+        pendingLongEntry := true
+        pendingShortEntry := false
+
+if shortSignal
+    if allowSequentialSignals or not hasActiveTradeInDirection(-1)
+        pendingLongEntry := false
+        pendingShortEntry := true
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Trade Execution - SIN CAMBIOS EN LA LÓGICA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// BLOQUE 1: Procesar cierre de operaciones opuestas
+if pendingLongEntry or pendingShortEntry
+    if array.size(activeTrades) > 0
+        newDirection = pendingLongEntry ? 1 : -1
+        for i = array.size(activeTrades) - 1 to 0
+            trade = array.get(activeTrades, i)
+            if trade.direction != newDirection
+                
+                totalTrades := totalTrades + 1
+                int tradeYear = year(time)
+                bool isTradeND = isNDTrade(trade)
+                
+                if isTradeND
+                    ndCount := ndCount + 1
+                    if trade.direction == 1
+                        longTrades := longTrades + 1
+                        longNDCount := longNDCount + 1
+                    else
+                        shortTrades := shortTrades + 1
+                        shortNDCount := shortNDCount + 1
+                    
+                    updateYearlyStats(tradeYear, trade.direction == 1, false, true)
+                    
+                    if showNDLabels
+                        label.new(bar_index, (high + low) / 2, "ND #" + str.tostring(trade.id), 
+                                 color=color.gray, style=label.style_label_left, textcolor=color.white, size=size.small)
+                
+                if not isTradeND and trade.tp1Hit
+                    tp1Count := tp1Count + 1
+                    if trade.direction == 1
+                        longTrades := longTrades + 1
+                        longTP1Count := longTP1Count + 1
+                    else
+                        shortTrades := shortTrades + 1
+                        shortTP1Count := shortTP1Count + 1
+                    
+                    updateYearlyStats(tradeYear, trade.direction == 1, true, false)
+                    
+                    currentWinStreak := currentWinStreak + 1
+                    maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                    currentLossStreak := 0
+                    
+                    if lastOpWasLoss
+                        operationsAfterLoss := operationsAfterLoss + 1
+                        winsAfterLoss := winsAfterLoss + 1
+                        lastOpWasLoss := false
+                
+                if not isTradeND and not trade.tp1Hit
+                    slCount := slCount + 1
+                    if trade.direction == 1
+                        longTrades := longTrades + 1
+                        longSLCount := longSLCount + 1
+                    else
+                        shortTrades := shortTrades + 1
+                        shortSLCount := shortSLCount + 1
+                    
+                    updateYearlyStats(tradeYear, trade.direction == 1, false, false)
+                    
+                    currentLossStreak := currentLossStreak + 1
+                    maxLossStreak := math.max(maxLossStreak, currentLossStreak)
+                    currentWinStreak := 0
+                    lastOpWasLoss := true
+                
+                array.remove(activeTrades, i)
+
+// BLOQUE 2: Crear nueva operación LONG
+if pendingLongEntry
+    tradeIdCounter := tradeIdCounter + 1
+    entryPrice = open
+    [sl, tp1, tp2] = calculateLevels(entryPrice, true)
+    
+    newTrade = Trade.new()
+    newTrade.id := tradeIdCounter
+    newTrade.entryPrice := entryPrice
+    newTrade.stopLoss := sl
+    newTrade.takeProfit1 := tp1
+    newTrade.takeProfit2 := tp2
+    newTrade.direction := 1
+    newTrade.tp1Hit := false
+    newTrade.tp2Hit := false
+    newTrade.slHit := false
+    newTrade.entryBar := bar_index
+    
+    array.push(activeTrades, newTrade)
+    createEntryLabel(entryPrice, sl, tp1, tp2, true, tradeIdCounter)
+    
+    if lastOpWasLoss
+        operationsAfterLoss := operationsAfterLoss + 1
+    
+    pendingLongEntry := false
+
+// BLOQUE 3: Crear nueva operación SHORT
+if pendingShortEntry
+    tradeIdCounter := tradeIdCounter + 1
+    entryPrice = open
+    [sl, tp1, tp2] = calculateLevels(entryPrice, false)
+    
+    newTrade = Trade.new()
+    newTrade.id := tradeIdCounter
+    newTrade.entryPrice := entryPrice
+    newTrade.stopLoss := sl
+    newTrade.takeProfit1 := tp1
+    newTrade.takeProfit2 := tp2
+    newTrade.direction := -1
+    newTrade.tp1Hit := false
+    newTrade.tp2Hit := false
+    newTrade.slHit := false
+    newTrade.entryBar := bar_index
+    
+    array.push(activeTrades, newTrade)
+    createEntryLabel(entryPrice, sl, tp1, tp2, false, tradeIdCounter)
+    
+    if lastOpWasLoss
+        operationsAfterLoss := operationsAfterLoss + 1
+    
+    pendingShortEntry := false
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Trade Management - SIN CAMBIOS EN LA LÓGICA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+if array.size(activeTrades) > 0
+    for i = array.size(activeTrades) - 1 to 0
+        trade = array.get(activeTrades, i)
+        
+        // PRIMERO: Verificar si es ND
+        bool isCurrentTradeND = isNDTrade(trade)
+        if isCurrentTradeND
+            totalTrades := totalTrades + 1
+            ndCount := ndCount + 1
+            
+            if trade.direction == 1
+                longTrades := longTrades + 1
+                longNDCount := longNDCount + 1
+            else
+                shortTrades := shortTrades + 1
+                shortNDCount := shortNDCount + 1
+            
+            int tradeYear = year(time)
+            updateYearlyStats(tradeYear, trade.direction == 1, false, true)
+            
+            if showNDLabels
+                label.new(bar_index, (high + low) / 2, "ND #" + str.tostring(trade.id), 
+                         color=color.gray, style=label.style_label_left, textcolor=color.white, size=size.small)
+            
+            array.remove(activeTrades, i)
+            continue
+        
+        // Procesar eventos TP/SL para LONG
+        if trade.direction == 1
+            bool tp1Reached = high >= trade.takeProfit1
+            if tp1Reached and not trade.tp1Hit
+                trade.tp1Hit := true
+                
+                if showEntryExitLines
+                    label.new(bar_index, high, "TP1 HIT #" + str.tostring(trade.id), 
+                             color=color.green, style=label.style_label_down, textcolor=color.white)
+                
+                if not useTP2
+                    totalTrades := totalTrades + 1
+                    tp1Count := tp1Count + 1
+                    longTrades := longTrades + 1
+                    longTP1Count := longTP1Count + 1
+                    
+                    int tradeYear = year(time)
+                    updateYearlyStats(tradeYear, true, true, false)
+                    
+                    currentWinStreak := currentWinStreak + 1
+                    maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                    currentLossStreak := 0
+                    
+                    if lastOpWasLoss
+                        operationsAfterLoss := operationsAfterLoss + 1
+                        winsAfterLoss := winsAfterLoss + 1
+                        lastOpWasLoss := false
+                    
+                    array.remove(activeTrades, i)
+                    continue
+                else
+                    array.set(activeTrades, i, trade)
+            
+            bool tp2Reached = useTP2 and trade.tp1Hit and high >= trade.takeProfit2
+            if tp2Reached and not trade.tp2Hit
+                trade.tp2Hit := true
+                tp2Count := tp2Count + 1
+                longTP2Count := longTP2Count + 1
+                
+                if showEntryExitLines
+                    label.new(bar_index, high, "TP2 HIT #" + str.tostring(trade.id), 
+                             color=color.green, style=label.style_label_down, textcolor=color.white)
+                
+                totalTrades := totalTrades + 1
+                tp1Count := tp1Count + 1
+                longTrades := longTrades + 1
+                longTP1Count := longTP1Count + 1
+                
+                int tradeYear = year(time)
+                updateYearlyStats(tradeYear, true, true, false)
+                
+                currentWinStreak := currentWinStreak + 1
+                maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                currentLossStreak := 0
+                
+                if lastOpWasLoss
+                    operationsAfterLoss := operationsAfterLoss + 1
+                    winsAfterLoss := winsAfterLoss + 1
+                    lastOpWasLoss := false
+                
+                array.remove(activeTrades, i)
+                continue
+            
+            bool slHitThisCandle = low <= trade.stopLoss
+            if slHitThisCandle and not trade.slHit
+                trade.slHit := true
+                
+                if showEntryExitLines
+                    if trade.tp1Hit
+                        label.new(bar_index, low, "SL after TP1 #" + str.tostring(trade.id), 
+                                 color=color.orange, style=label.style_label_up, textcolor=color.white)
+                        
+                        totalTrades := totalTrades + 1
+                        tp1Count := tp1Count + 1
+                        longTrades := longTrades + 1
+                        longTP1Count := longTP1Count + 1
+                        
+                        int tradeYear = year(time)
+                        updateYearlyStats(tradeYear, true, true, false)
+                        
+                        currentWinStreak := currentWinStreak + 1
+                        maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                        currentLossStreak := 0
+                        
+                        if lastOpWasLoss
+                            operationsAfterLoss := operationsAfterLoss + 1
+                            winsAfterLoss := winsAfterLoss + 1
+                            lastOpWasLoss := false
+                    else
+                        label.new(bar_index, low, "SL HIT #" + str.tostring(trade.id), 
+                                 color=color.red, style=label.style_label_up, textcolor=color.white)
+                        
+                        totalTrades := totalTrades + 1
+                        slCount := slCount + 1
+                        longTrades := longTrades + 1
+                        longSLCount := longSLCount + 1
+                        
+                        int tradeYear = year(time)
+                        updateYearlyStats(tradeYear, true, false, false)
+                        
+                        currentLossStreak := currentLossStreak + 1
+                        maxLossStreak := math.max(maxLossStreak, currentLossStreak)
+                        currentWinStreak := 0
+                        lastOpWasLoss := true
+                
+                array.remove(activeTrades, i)
+                continue
+        
+        // Procesar eventos TP/SL para SHORT
+        if trade.direction == -1
+            bool tp1Reached = low <= trade.takeProfit1
+            if tp1Reached and not trade.tp1Hit
+                trade.tp1Hit := true
+                
+                if showEntryExitLines
+                    label.new(bar_index, low, "TP1 HIT #" + str.tostring(trade.id), 
+                             color=color.green, style=label.style_label_up, textcolor=color.white)
+                
+                if not useTP2
+                    totalTrades := totalTrades + 1
+                    tp1Count := tp1Count + 1
+                    shortTrades := shortTrades + 1
+                    shortTP1Count := shortTP1Count + 1
+                    
+                    int tradeYear = year(time)
+                    updateYearlyStats(tradeYear, false, true, false)
+                    
+                    currentWinStreak := currentWinStreak + 1
+                    maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                    currentLossStreak := 0
+                    
+                    if lastOpWasLoss
+                        operationsAfterLoss := operationsAfterLoss + 1
+                        winsAfterLoss := winsAfterLoss + 1
+                        lastOpWasLoss := false
+                    
+                    array.remove(activeTrades, i)
+                    continue
+                else
+                    array.set(activeTrades, i, trade)
+            
+            bool tp2Reached = useTP2 and trade.tp1Hit and low <= trade.takeProfit2
+            if tp2Reached and not trade.tp2Hit
+                trade.tp2Hit := true
+                tp2Count := tp2Count + 1
+                shortTP2Count := shortTP2Count + 1
+                
+                if showEntryExitLines
+                    label.new(bar_index, low, "TP2 HIT #" + str.tostring(trade.id), 
+                             color=color.green, style=label.style_label_up, textcolor=color.white)
+                
+                totalTrades := totalTrades + 1
+                tp1Count := tp1Count + 1
+                shortTrades := shortTrades + 1
+                shortTP1Count := shortTP1Count + 1
+                
+                int tradeYear = year(time)
+                updateYearlyStats(tradeYear, false, true, false)
+                
+                currentWinStreak := currentWinStreak + 1
+                maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                currentLossStreak := 0
+                
+                if lastOpWasLoss
+                    operationsAfterLoss := operationsAfterLoss + 1
+                    winsAfterLoss := winsAfterLoss + 1
+                    lastOpWasLoss := false
+                
+                array.remove(activeTrades, i)
+                continue
+            
+            bool slHitThisCandle = high >= trade.stopLoss
+            if slHitThisCandle and not trade.slHit
+                trade.slHit := true
+                
+                if showEntryExitLines
+                    if trade.tp1Hit
+                        label.new(bar_index, high, "SL after TP1 #" + str.tostring(trade.id), 
+                                 color=color.orange, style=label.style_label_down, textcolor=color.white)
+                        
+                        totalTrades := totalTrades + 1
+                        tp1Count := tp1Count + 1
+                        shortTrades := shortTrades + 1
+                        shortTP1Count := shortTP1Count + 1
+                        
+                        int tradeYear = year(time)
+                        updateYearlyStats(tradeYear, false, true, false)
+                        
+                        currentWinStreak := currentWinStreak + 1
+                        maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                        currentLossStreak := 0
+                        
+                        if lastOpWasLoss
+                            operationsAfterLoss := operationsAfterLoss + 1
+                            winsAfterLoss := winsAfterLoss + 1
+                            lastOpWasLoss := false
+                    else
+                        label.new(bar_index, high, "SL HIT #" + str.tostring(trade.id), 
+                                 color=color.red, style=label.style_label_down, textcolor=color.white)
+                        
+                        totalTrades := totalTrades + 1
+                        slCount := slCount + 1
+                        shortTrades := shortTrades + 1
+                        shortSLCount := shortSLCount + 1
+                        
+                        int tradeYear = year(time)
+                        updateYearlyStats(tradeYear, false, false, false)
+                        
+                        currentLossStreak := currentLossStreak + 1
+                        maxLossStreak := math.max(maxLossStreak, currentLossStreak)
+                        currentWinStreak := 0
+                        lastOpWasLoss := true
+                
+                array.remove(activeTrades, i)
+                continue
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CSV EXPORT - SIN CAMBIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+csvLong = longSignal ? close : na
+csvShort = shortSignal ? close : na
+csvEntryLevel = array.size(activeTrades) > 0 ? array.get(activeTrades, 0).entryPrice : na
+csvTakeProfit1 = array.size(activeTrades) > 0 ? array.get(activeTrades, 0).takeProfit1 : na
+csvTakeProfit2 = array.size(activeTrades) > 0 ? array.get(activeTrades, 0).takeProfit2 : na
+csvStopLoss = array.size(activeTrades) > 0 ? array.get(activeTrades, 0).stopLoss : na
+
+plot(csvLong, "Long", display=display.data_window)
+plot(csvShort, "Short", display=display.data_window)
+plot(csvEntryLevel, "Entry Level", display=display.data_window)
+plot(csvTakeProfit1, "Take Profit 1", display=display.data_window)
+plot(csvTakeProfit2, "Take Profit 2", display=display.data_window)
+plot(csvStopLoss, "Stop Loss", display=display.data_window)
+plot(rsi, "Plot", display=display.data_window)
+plot(volume, "Volume", display=display.data_window)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Plotting - SIN CAMBIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+plot(showBB ? middle : na, "Middle Band", color.blue)
+plot(showBB ? upper : na, "Upper Band", color.red)
+plot(showBB ? lower : na, "Lower Band", color.green)
+
+var float entry1 = na, var float sl1 = na, var float tp1_1 = na, var float tp2_1 = na, var int dir1 = 0
+var float entry2 = na, var float sl2 = na, var float tp1_2 = na, var float tp2_2 = na, var int dir2 = 0
+var float entry3 = na, var float sl3 = na, var float tp1_3 = na, var float tp2_3 = na, var int dir3 = 0
+var float entry4 = na, var float sl4 = na, var float tp1_4 = na, var float tp2_4 = na, var int dir4 = 0
+var float entry5 = na, var float sl5 = na, var float tp1_5 = na, var float tp2_5 = na, var int dir5 = 0
+
+entry1 := na
+sl1 := na
+tp1_1 := na
+tp2_1 := na
+dir1 := 0
+
+entry2 := na
+sl2 := na
+tp1_2 := na
+tp2_2 := na
+dir2 := 0
+
+entry3 := na
+sl3 := na
+tp1_3 := na
+tp2_3 := na
+dir3 := 0
+
+entry4 := na
+sl4 := na
+tp1_4 := na
+tp2_4 := na
+dir4 := 0
+
+entry5 := na
+sl5 := na
+tp1_5 := na
+tp2_5 := na
+dir5 := 0
+
+if showEntryExitLines
+    numTrades = math.min(array.size(activeTrades), maxVisibleTrades)
+    
+    if numTrades > 0
+        trade = array.get(activeTrades, 0)
+        entry1 := trade.entryPrice
+        sl1 := trade.stopLoss
+        tp1_1 := trade.takeProfit1
+        tp2_1 := trade.takeProfit2
+        dir1 := trade.direction
+    
+    if numTrades > 1
+        trade = array.get(activeTrades, 1)
+        entry2 := trade.entryPrice
+        sl2 := trade.stopLoss
+        tp1_2 := trade.takeProfit1
+        tp2_2 := trade.takeProfit2
+        dir2 := trade.direction
+    
+    if numTrades > 2
+        trade = array.get(activeTrades, 2)
+        entry3 := trade.entryPrice
+        sl3 := trade.stopLoss
+        tp1_3 := trade.takeProfit1
+        tp2_3 := trade.takeProfit2
+        dir3 := trade.direction
+    
+    if numTrades > 3
+        trade = array.get(activeTrades, 3)
+        entry4 := trade.entryPrice
+        sl4 := trade.stopLoss
+        tp1_4 := trade.takeProfit1
+        tp2_4 := trade.takeProfit2
+        dir4 := trade.direction
+    
+    if numTrades > 4
+        trade = array.get(activeTrades, 4)
+        entry5 := trade.entryPrice
+        sl5 := trade.stopLoss
+        tp1_5 := trade.takeProfit1
+        tp2_5 := trade.takeProfit2
+        dir5 := trade.direction
+
+entryColor1 = dir1 == 1 ? color.yellow : dir1 == -1 ? color.yellow : na
+slColor1 = dir1 == 1 ? color.red : dir1 == -1 ? color.red : na
+tp1Color1 = dir1 == 1 ? color.green : dir1 == -1 ? color.green : na
+tp2Color1 = dir1 == 1 ? color.lime : dir1 == -1 ? color.lime : na
+
+entryColor2 = dir2 == 1 ? color.new(color.yellow, 20) : dir2 == -1 ? color.new(color.yellow, 20) : na
+slColor2 = dir2 == 1 ? color.new(color.red, 20) : dir2 == -1 ? color.new(color.red, 20) : na
+tp1Color2 = dir2 == 1 ? color.new(color.green, 20) : dir2 == -1 ? color.new(color.green, 20) : na
+tp2Color2 = dir2 == 1 ? color.new(color.lime, 20) : dir2 == -1 ? color.new(color.lime, 20) : na
+
+entryColor3 = dir3 == 1 ? color.new(color.yellow, 40) : dir3 == -1 ? color.new(color.yellow, 40) : na
+slColor3 = dir3 == 1 ? color.new(color.red, 40) : dir3 == -1 ? color.new(color.red, 40) : na
+tp1Color3 = dir3 == 1 ? color.new(color.green, 40) : dir3 == -1 ? color.new(color.green, 40) : na
+tp2Color3 = dir3 == 1 ? color.new(color.lime, 40) : dir3 == -1 ? color.new(color.lime, 40) : na
+
+entryColor4 = dir4 == 1 ? color.new(color.yellow, 60) : dir4 == -1 ? color.new(color.yellow, 60) : na
+slColor4 = dir4 == 1 ? color.new(color.red, 60) : dir4 == -1 ? color.new(color.red, 60) : na
+tp1Color4 = dir4 == 1 ? color.new(color.green, 60) : dir4 == -1 ? color.new(color.green, 60) : na
+tp2Color4 = dir4 == 1 ? color.new(color.lime, 60) : dir4 == -1 ? color.new(color.lime, 60) : na
+
+entryColor5 = dir5 == 1 ? color.new(color.yellow, 80) : dir5 == -1 ? color.new(color.yellow, 80) : na
+slColor5 = dir5 == 1 ? color.new(color.red, 80) : dir5 == -1 ? color.new(color.red, 80) : na
+tp1Color5 = dir5 == 1 ? color.new(color.green, 80) : dir5 == -1 ? color.new(color.green, 80) : na
+tp2Color5 = dir5 == 1 ? color.new(color.lime, 80) : dir5 == -1 ? color.new(color.lime, 80) : na
+
+plot(entry1, "Entry 1", entryColor1, 1, plot.style_circles)
+plot(sl1, "Stop Loss 1", slColor1, 1, plot.style_circles)
+plot(tp1_1, "Take Profit 1-1", tp1Color1, 1, plot.style_circles)
+plot(useTP2 ? tp2_1 : na, "Take Profit 2-1", tp2Color1, 1, plot.style_circles)
+
+plot(entry2, "Entry 2", entryColor2, 1, plot.style_circles)
+plot(sl2, "Stop Loss 2", slColor2, 1, plot.style_circles)
+plot(tp1_2, "Take Profit 1-2", tp1Color2, 1, plot.style_circles)
+plot(useTP2 ? tp2_2 : na, "Take Profit 2-2", tp2Color2, 1, plot.style_circles)
+
+plot(entry3, "Entry 3", entryColor3, 1, plot.style_circles)
+plot(sl3, "Stop Loss 3", slColor3, 1, plot.style_circles)
+plot(tp1_3, "Take Profit 1-3", tp1Color3, 1, plot.style_circles)
+plot(useTP2 ? tp2_3 : na, "Take Profit 2-3", tp2Color3, 1, plot.style_circles)
+
+plot(entry4, "Entry 4", entryColor4, 1, plot.style_circles)
+plot(sl4, "Stop Loss 4", slColor4, 1, plot.style_circles)
+plot(tp1_4, "Take Profit 1-4", tp1Color4, 1, plot.style_circles)
+plot(useTP2 ? tp2_4 : na, "Take Profit 2-4", tp2Color4, 1, plot.style_circles)
+
+plot(entry5, "Entry 5", entryColor5, 1, plot.style_circles)
+plot(sl5, "Stop Loss 5", slColor5, 1, plot.style_circles)
+plot(tp1_5, "Take Profit 1-5", tp1Color5, 1, plot.style_circles)
+plot(useTP2 ? tp2_5 : na, "Take Profit 2-5", tp2Color5, 1, plot.style_circles)
+
+plotshape(pendingLongEntry, title="Pending Long Entry", style=shape.circle, location=location.belowbar, 
+          color=color.new(color.green, 50), size=size.small)
+plotshape(pendingShortEntry, title="Pending Short Entry", style=shape.circle, location=location.abovebar, 
+          color=color.new(color.red, 50), size=size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RSI Visualization - SIN CAMBIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+rsiIndicator = ta.rsi(close, rsiLength)
+rsiPanel = rsiIndicator
+plot(rsiPanel, "RSI", color.purple, 2, display=display.pane)
+
+hline(50, "RSI Mid Line", color.gray, hline.style_dotted)
+hline(rsiOverbought, "RSI Overbought", color.red, hline.style_dashed)
+hline(rsiOversold, "RSI Oversold", color.green, hline.style_dashed)
+
+rsiSMA = ta.sma(rsiIndicator, 14)
+plot(rsiSMA, "RSI SMA", color.yellow, 1, display=display.pane)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Parameters Table - ACTUALIZADA CON ETIQUETAS CORTAS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+if showParametersTable and barstate.islast
+    paramsTable = table.new(position.bottom_left, 4, 25, color.black, color.white, 2, color.white, 1)
+    
+    // Header
+    table.cell(paramsTable, 0, 0, "Strategy Parameters", text_color=color.white, bgcolor=color.blue, text_size=size.normal)
+    table.merge_cells(paramsTable, 0, 0, 3, 0)
+    
+    // Date Range
+    table.cell(paramsTable, 0, 1, "Date Range", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(paramsTable, 1, 1, str.tostring(startDay) + "/" + str.tostring(startMonth) + "/" + str.tostring(startYear), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, 1, str.tostring(endDay) + "/" + str.tostring(endMonth) + "/" + str.tostring(endYear), text_color=color.white, text_size=size.small)
+    
+    // TP/SL Mode
+    table.cell(paramsTable, 0, 2, "TP/SL Mode", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    table.cell(paramsTable, 1, 2, unifiedTPSL ? "UNIFIED" : "SEPARATED", text_color=color.white, bgcolor=unifiedTPSL ? color.green : color.orange, text_size=size.small)
+    table.cell(paramsTable, 2, 2, useTP2 ? "TP2 ON" : "TP2 OFF", text_color=color.white, bgcolor=useTP2 ? color.green : color.red, text_size=size.small)
+    
+    // TP/SL Settings según modo - ETIQUETAS CORTAS APLICADAS
+    if unifiedTPSL
+        table.cell(paramsTable, 0, 3, "SL %", text_color=color.white, bgcolor=color.red, text_size=size.small)
+        table.cell(paramsTable, 1, 3, str.tostring(fixedSL, "#.##"), text_color=color.white, text_size=size.small)
+        table.cell(paramsTable, 2, 3, "Unified", text_color=color.white, text_size=size.small)
+        
+        table.cell(paramsTable, 0, 4, "TP1 %", text_color=color.white, bgcolor=color.green, text_size=size.small)
+        table.cell(paramsTable, 1, 4, str.tostring(fixedTP1, "#.##"), text_color=color.white, text_size=size.small)
+        table.cell(paramsTable, 2, 4, "Unified", text_color=color.white, text_size=size.small)
+        
+        table.cell(paramsTable, 0, 5, "TP2 %", text_color=color.white, bgcolor=color.lime, text_size=size.small)
+        table.cell(paramsTable, 1, 5, str.tostring(fixedTP2, "#.##"), text_color=color.white, text_size=size.small)
+        table.cell(paramsTable, 2, 5, "Unified", text_color=color.white, text_size=size.small)
+    else
+        table.cell(paramsTable, 0, 3, "L SL %", text_color=color.white, bgcolor=color.red, text_size=size.small)
+        table.cell(paramsTable, 1, 3, str.tostring(longSL, "#.##"), text_color=color.white, text_size=size.small)
+        table.cell(paramsTable, 2, 3, "S SL %", text_color=color.white, bgcolor=color.red, text_size=size.small)
+        table.cell(paramsTable, 3, 3, str.tostring(shortSL, "#.##"), text_color=color.white, text_size=size.small)
+        
+        table.cell(paramsTable, 0, 4, "L TP1 %", text_color=color.white, bgcolor=color.green, text_size=size.small)
+        table.cell(paramsTable, 1, 4, str.tostring(longTP1, "#.##"), text_color=color.white, text_size=size.small)
+        table.cell(paramsTable, 2, 4, "S TP1 %", text_color=color.white, bgcolor=color.green, text_size=size.small)
+        table.cell(paramsTable, 3, 4, str.tostring(shortTP1, "#.##"), text_color=color.white, text_size=size.small)
+        
+        table.cell(paramsTable, 0, 5, "L TP2 %", text_color=color.white, bgcolor=color.lime, text_size=size.small)
+        table.cell(paramsTable, 1, 5, str.tostring(longTP2, "#.##"), text_color=color.white, text_size=size.small)
+        table.cell(paramsTable, 2, 5, "S TP2 %", text_color=color.white, bgcolor=color.lime, text_size=size.small)
+        table.cell(paramsTable, 3, 5, str.tostring(shortTP2, "#.##"), text_color=color.white, text_size=size.small)
+    
+    // Resto de parámetros (sin cambios en numeración)
+    int rowOffset = 6
+    
+    // Bollinger Bands
+    table.cell(paramsTable, 0, rowOffset, "BB Length", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    table.cell(paramsTable, 1, rowOffset, str.tostring(bbLength), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, rowOffset, "Periods", text_color=color.white, text_size=size.small)
+    
+    table.cell(paramsTable, 0, rowOffset + 1, "BB Multiplier", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    table.cell(paramsTable, 1, rowOffset + 1, str.tostring(bbMult, "#.##"), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, rowOffset + 1, "StdDev", text_color=color.white, text_size=size.small)
+    
+    // RSI Settings
+    table.cell(paramsTable, 0, rowOffset + 2, "RSI Length", text_color=color.white, bgcolor=color.purple, text_size=size.small)
+    table.cell(paramsTable, 1, rowOffset + 2, str.tostring(rsiLength), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, rowOffset + 2, "Periods", text_color=color.white, text_size=size.small)
+    
+    table.cell(paramsTable, 0, rowOffset + 3, "RSI Oversold", text_color=color.white, bgcolor=color.green, text_size=size.small)
+    table.cell(paramsTable, 1, rowOffset + 3, str.tostring(rsiOversold), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, rowOffset + 3, "Level", text_color=color.white, text_size=size.small)
+    
+    table.cell(paramsTable, 0, rowOffset + 4, "RSI Overbought", text_color=color.white, bgcolor=color.red, text_size=size.small)
+    table.cell(paramsTable, 1, rowOffset + 4, str.tostring(rsiOverbought), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, rowOffset + 4, "Level", text_color=color.white, text_size=size.small)
+    
+    // Signal Safety
+    table.cell(paramsTable, 0, rowOffset + 5, "Security Candle", text_color=color.white, bgcolor=color.orange, text_size=size.small)
+    table.cell(paramsTable, 1, rowOffset + 5, str.tostring(securityCandle), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, rowOffset + 5, useSecurityCandle ? "ON" : "OFF", text_color=color.white, bgcolor=useSecurityCandle ? color.green : color.red, text_size=size.small)
+    
+    table.cell(paramsTable, 0, rowOffset + 6, "Volume Filter", text_color=color.white, bgcolor=color.orange, text_size=size.small)
+    table.cell(paramsTable, 1, rowOffset + 6, str.tostring(percentVolume, "#.##"), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, rowOffset + 6, useVolumeFilter ? "ON" : "OFF", text_color=color.white, bgcolor=useVolumeFilter ? color.green : color.red, text_size=size.small)
+    
+    // ATR Settings
+    table.cell(paramsTable, 0, rowOffset + 7, "ATR Mode", text_color=color.white, bgcolor=color.yellow, text_size=size.small)
+    table.cell(paramsTable, 1, rowOffset + 7, useATR ? "ATR" : "FIXED", text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, rowOffset + 7, useATR ? "ON" : "OFF", text_color=color.white, bgcolor=useATR ? color.green : color.red, text_size=size.small)
+    
+    // Calculated Values
+    currentSLForCalc = unifiedTPSL ? fixedSL : longSL
+    currentTP1ForCalc = unifiedTPSL ? fixedTP1 : longTP1
+    float minWinRate = 100 * currentSLForCalc / (currentSLForCalc + currentTP1ForCalc)
+    table.cell(paramsTable, 0, rowOffset + 8, "Min Win Rate", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(paramsTable, 1, rowOffset + 8, str.tostring(minWinRate, "#.##") + "%", text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, rowOffset + 8, unifiedTPSL ? "Unified" : "L Based", text_color=color.white, text_size=size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Debug Table - SIN CAMBIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+if showDebugTable and barstate.islast
+    debugTable = table.new(position.bottom_right, 3, 8, color.black, color.white, 1, color.white, 1)
+    
+    table.cell(debugTable, 0, 0, "Verificación", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    table.cell(debugTable, 1, 0, "Valor", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    table.cell(debugTable, 2, 0, "Estado", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    
+    table.cell(debugTable, 0, 1, "Total Trades", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(debugTable, 1, 1, str.tostring(totalTrades), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 2, 1, "", text_color=color.white, text_size=size.small)
+    
+    table.cell(debugTable, 0, 2, "TP1 Count", text_color=color.white, bgcolor=color.green, text_size=size.small)
+    table.cell(debugTable, 1, 2, str.tostring(tp1Count), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 2, 2, "", text_color=color.white, text_size=size.small)
+    
+    table.cell(debugTable, 0, 3, "SL Count", text_color=color.white, bgcolor=color.red, text_size=size.small)
+    table.cell(debugTable, 1, 3, str.tostring(slCount), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 2, 3, "", text_color=color.white, text_size=size.small)
+    
+    table.cell(debugTable, 0, 4, "ND Count", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(debugTable, 1, 4, str.tostring(ndCount), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 2, 4, "", text_color=color.white, text_size=size.small)
+    
+    int sumVerification = tp1Count + slCount + ndCount
+    table.cell(debugTable, 0, 5, "TP1+SL+ND", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+    table.cell(debugTable, 1, 5, str.tostring(sumVerification), text_color=color.white, text_size=size.small)
+    color statusColor = sumVerification == totalTrades ? color.green : color.red
+    string statusText = sumVerification == totalTrades ? "✓ OK" : "✗ ERROR"
+    table.cell(debugTable, 2, 5, statusText, text_color=color.white, bgcolor=statusColor, text_size=size.small)
+    
+    table.cell(debugTable, 0, 6, "TP2 Count", text_color=color.white, bgcolor=color.lime, text_size=size.small)
+    table.cell(debugTable, 1, 6, str.tostring(tp2Count), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 2, 6, "Info", text_color=color.white, text_size=size.small)
+    
+    table.cell(debugTable, 0, 7, "Active Trades", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(debugTable, 1, 7, str.tostring(array.size(activeTrades)), text_color=color.white, text_size=size.small)
+    table.cell(debugTable, 2, 7, "", text_color=color.white, text_size=size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Statistics Table - ACTUALIZADA PARA MOSTRAR WIN RATES SEPARADOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+float winRateTotal = 0.0
+float longWinRate = 0.0
+float shortWinRate = 0.0
+
+if totalTrades > 0
+    winRateTotal := 100 * tp1Count / totalTrades
+
+if longTrades > 0
+    longWinRate := 100 * longTP1Count / longTrades
+
+if shortTrades > 0
+    shortWinRate := 100 * shortTP1Count / shortTrades
+
+float recoveryProbability = operationsAfterLoss > 0 ? 100 * winsAfterLoss / operationsAfterLoss : 0.0
+
+// CALCULAR MIN WIN RATE SEGÚN MODO
+float minWinRateUnified = unifiedTPSL ? 100 * fixedSL / (fixedSL + fixedTP1) : 0.0
+float minWinRateLong = not unifiedTPSL ? 100 * longSL / (longSL + longTP1) : 0.0
+float minWinRateShort = not unifiedTPSL ? 100 * shortSL / (shortSL + shortTP1) : 0.0
+
+// USAR VALORES APROPIADOS PARA CÁLCULOS
+currentSLForProfit = unifiedTPSL ? fixedSL : ((longTrades > shortTrades) ? longSL : shortSL)
+currentTP1ForProfit = unifiedTPSL ? fixedTP1 : ((longTrades > shortTrades) ? longTP1 : shortTP1)
+
+float totalNetProfit = (tp1Count * currentTP1ForProfit) - (slCount * currentSLForProfit)
+float maxDrawdown = maxLossStreak * currentSLForProfit
+float recoveryFactor = maxDrawdown > 0 ? totalNetProfit / maxDrawdown : 0.0
+float ndPercentage = totalTrades > 0 ? 100 * ndCount / totalTrades : 0.0
+
+if showStats and barstate.islast
+    int yearlyStatsRows = 0
+    if showYearlyStats
+        int startYr = startYear
+        int endYr = endYear
+        yearlyStatsRows := math.min(endYr - startYr + 1 + 1, 10)
+    
+    int baseRows = useTP2 ? 9 : 8  // Una fila más para mostrar modo TP/SL
+    int barInfoRows = showBarInfo ? 3 : 0
+    int totalRows = baseRows + yearlyStatsRows + barInfoRows
+    
+    statsTable = table.new(position.top_right, 6, totalRows, color.black, color.white, 2, color.white, 1)
+    
+    table.cell(statsTable, 0, 0, "Estadísticas de Estrategia", text_color=color.white, bgcolor=color.blue, text_size=size.normal)
+    table.merge_cells(statsTable, 0, 0, 5, 0)
+    
+    // MOSTRAR MODO TP/SL
+    table.cell(statsTable, 0, 1, "TP/SL Mode", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(statsTable, 1, 1, unifiedTPSL ? "UNIFIED" : "SEPARATED", text_color=color.white, bgcolor=unifiedTPSL ? color.green : color.orange, text_size=size.small)
+    
+    table.cell(statsTable, 0, 2, "Total Trades", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(statsTable, 1, 2, str.tostring(totalTrades), text_color=color.white, text_size=size.small)
+    
+    table.cell(statsTable, 0, 3, "Win Rate (TP1)", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(statsTable, 1, 3, str.tostring(winRateTotal, "#.##") + "%", text_color=color.white, text_size=size.small)
+    
+    table.cell(statsTable, 0, 4, "TP1 Hits", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(statsTable, 1, 4, str.tostring(tp1Count), text_color=color.white, text_size=size.small)
+    
+    if useTP2
+        table.cell(statsTable, 0, 5, "TP2 Hits", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+        table.cell(statsTable, 1, 5, str.tostring(tp2Count), text_color=color.white, text_size=size.small)
+    
+    table.cell(statsTable, 0, useTP2 ? 6 : 5, "SL Hits", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(statsTable, 1, useTP2 ? 6 : 5, str.tostring(slCount), text_color=color.white, text_size=size.small)
+    
+    int ndRow = useTP2 ? 7 : 6
+    table.cell(statsTable, 0, ndRow, "ND Trades", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(statsTable, 1, ndRow, str.tostring(ndCount) + " (" + str.tostring(ndPercentage, "#.##") + "%)", text_color=color.white, text_size=size.small)
+    
+    int streakRow = useTP2 ? 8 : 7
+    table.cell(statsTable, 0, streakRow, "Max L: " + str.tostring(maxLossStreak), text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    table.cell(statsTable, 1, streakRow, "Max TP: " + str.tostring(maxWinStreak), text_color=color.white, bgcolor=color.green, text_size=size.small)
+    table.cell(statsTable, 2, streakRow, "Pr%: " + str.tostring(recoveryProbability, "#.##") + "%", text_color=color.white, bgcolor=color.orange, text_size=size.small)
+    
+    // MOSTRAR MIN WIN RATE SEGÚN MODO
+    if unifiedTPSL
+        table.cell(statsTable, 3, streakRow, "E%: " + str.tostring(minWinRateUnified, "#.##") + "%", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    else
+        table.cell(statsTable, 3, streakRow, "EL%: " + str.tostring(minWinRateLong, "#.##") + "%", text_color=color.white, bgcolor=color.green, text_size=size.small)
+        table.cell(statsTable, 4, streakRow, "ES%: " + str.tostring(minWinRateShort, "#.##") + "%", text_color=color.white, bgcolor=color.red, text_size=size.small)
+    
+    color rfColor = recoveryFactor >= 1.0 ? color.green : color.red
+    int rfColumn = unifiedTPSL ? 4 : 5
+    if rfColumn < 6
+        table.cell(statsTable, rfColumn, streakRow, "RF: " + str.tostring(recoveryFactor, "#.##"), text_color=color.white, bgcolor=rfColor, text_size=size.small)
+    
+    if showDetailedStats
+        table.cell(statsTable, 2, 2, "L Trades", text_color=color.white, bgcolor=color.green, text_size=size.small)
+        table.cell(statsTable, 3, 2, str.tostring(longTrades), text_color=color.white, text_size=size.small)
+        
+        table.cell(statsTable, 2, 3, "L Win Rate", text_color=color.white, bgcolor=color.green, text_size=size.small)
+        table.cell(statsTable, 3, 3, str.tostring(longWinRate, "#.##") + "%", text_color=color.white, text_size=size.small)
+        
+        table.cell(statsTable, 2, 4, "L TP1", text_color=color.white, bgcolor=color.green, text_size=size.small)
+        table.cell(statsTable, 3, 4, str.tostring(longTP1Count), text_color=color.white, text_size=size.small)
+        
+        if useTP2
+            table.cell(statsTable, 2, 5, "L TP2", text_color=color.white, bgcolor=color.green, text_size=size.small)
+            table.cell(statsTable, 3, 5, str.tostring(longTP2Count), text_color=color.white, text_size=size.small)
+        
+        table.cell(statsTable, 2, useTP2 ? 6 : 5, "L SL", text_color=color.white, bgcolor=color.green, text_size=size.small)
+        table.cell(statsTable, 3, useTP2 ? 6 : 5, str.tostring(longSLCount), text_color=color.white, text_size=size.small)
+        
+        table.cell(statsTable, 2, ndRow, "L ND", text_color=color.white, bgcolor=color.green, text_size=size.small)
+        table.cell(statsTable, 3, ndRow, str.tostring(longNDCount), text_color=color.white, text_size=size.small)
+        
+        table.cell(statsTable, 4, 2, "S Trades", text_color=color.white, bgcolor=color.red, text_size=size.small)
+        table.cell(statsTable, 5, 2, str.tostring(shortTrades), text_color=color.white, text_size=size.small)
+        
+        table.cell(statsTable, 4, 3, "S Win Rate", text_color=color.white, bgcolor=color.red, text_size=size.small)
+        table.cell(statsTable, 5, 3, str.tostring(shortWinRate, "#.##") + "%", text_color=color.white, text_size=size.small)
+        
+        table.cell(statsTable, 4, 4, "S TP1", text_color=color.white, bgcolor=color.red, text_size=size.small)
+        table.cell(statsTable, 5, 4, str.tostring(shortTP1Count), text_color=color.white, text_size=size.small)
+        
+        if useTP2
+            table.cell(statsTable, 4, 5, "S TP2", text_color=color.white, bgcolor=color.red, text_size=size.small)
+            table.cell(statsTable, 5, 5, str.tostring(shortTP2Count), text_color=color.white, text_size=size.small)
+        
+        table.cell(statsTable, 4, useTP2 ? 6 : 5, "S SL", text_color=color.white, bgcolor=color.red, text_size=size.small)
+        table.cell(statsTable, 5, useTP2 ? 6 : 5, str.tostring(shortSLCount), text_color=color.white, text_size=size.small)
+        
+        table.cell(statsTable, 4, ndRow, "S ND", text_color=color.white, bgcolor=color.red, text_size=size.small)
+        table.cell(statsTable, 5, ndRow, str.tostring(shortNDCount), text_color=color.white, text_size=size.small)
+    
+    if showYearlyStats
+        yearStatsRow = baseRows
+        table.cell(statsTable, 0, yearStatsRow, "Estadísticas Anuales", text_color=color.white, bgcolor=color.blue, text_size=size.normal)
+        table.merge_cells(statsTable, 0, yearStatsRow, 5, yearStatsRow)
+        
+        int startYr = startYear
+        int endYr = endYear
+        
+        var int[] yearsInRange = array.new_int(0)
+        int yearCount = math.min(endYr - startYr + 1, 9)
+        
+        for i = 0 to yearCount - 1
+            int yearValue = startYr + i
+            array.push(yearsInRange, yearValue)
+        
+        for i = 0 to math.min(array.size(yearsInRange) - 1, yearlyStatsRows - 2)
+            int currentYear = array.get(yearsInRange, i)
+            int yearRow = yearStatsRow + 1 + i
+            
+            if yearRow < totalRows
+                int totalForYear = map.contains(yearlyTotalTrades, currentYear) ? map.get(yearlyTotalTrades, currentYear) : 0
+                int tp1ForYear = map.contains(yearlyTP1Count, currentYear) ? map.get(yearlyTP1Count, currentYear) : 0
+                int longForYear = map.contains(yearlyLongTrades, currentYear) ? map.get(yearlyLongTrades, currentYear) : 0
+                int shortForYear = map.contains(yearlyShortTrades, currentYear) ? map.get(yearlyShortTrades, currentYear) : 0
+                int ndForYear = map.contains(yearlyNDCount, currentYear) ? map.get(yearlyNDCount, currentYear) : 0
+                
+                float yearlyWinRate = totalForYear > 0 ? 100 * tp1ForYear / totalForYear : 0.0
+                float currentMinWinRate = unifiedTPSL ? minWinRateUnified : math.min(minWinRateLong, minWinRateShort)
+                color winRateColor = yearlyWinRate >= currentMinWinRate ? color.green : color.red
+                
+                table.cell(statsTable, 0, yearRow, str.tostring(currentYear), text_color=color.white, bgcolor=color.gray, text_size=size.small)
+                table.cell(statsTable, 1, yearRow, str.tostring(totalForYear), text_color=color.white, text_size=size.small)
+                table.cell(statsTable, 2, yearRow, str.tostring(yearlyWinRate, "#.##") + "%", text_color=color.white, bgcolor=winRateColor, text_size=size.small)
+                table.cell(statsTable, 3, yearRow, str.tostring(longForYear), text_color=color.white, bgcolor=color.green, text_size=size.small)
+                table.cell(statsTable, 4, yearRow, str.tostring(shortForYear), text_color=color.white, bgcolor=color.red, text_size=size.small)
+                table.cell(statsTable, 5, yearRow, str.tostring(ndForYear), text_color=color.white, bgcolor=color.gray, text_size=size.small)
+    
+    if showBarInfo
+        barInfoRow = baseRows + yearlyStatsRows
+        
+        if barInfoRow < totalRows
+            table.cell(statsTable, 0, barInfoRow, "Data Range Info", text_color=color.white, bgcolor=color.blue, text_size=size.small)
+            table.merge_cells(statsTable, 0, barInfoRow, 5, barInfoRow)
+            
+            barInfoRow += 1
+            if barInfoRow < totalRows
+                table.cell(statsTable, 0, barInfoRow, "Timeframe: " + timeframe.period, text_color=color.white, bgcolor=color.gray, text_size=size.small)
+                table.cell(statsTable, 1, barInfoRow, "Max History: " + str.tostring(math.round(maxHistoryDays)) + " days", text_color=color.white, text_size=size.small)
+                table.merge_cells(statsTable, 1, barInfoRow, 5, barInfoRow)
+                
+                barInfoRow += 1
+                if barInfoRow < totalRows
+                    table.cell(statsTable, 0, barInfoRow, "Date Range", text_color=color.white, bgcolor=color.gray, text_size=size.small)
+                    
+                    coverageColor = color.white
+                    if coveragePercentage < 50
+                        coverageColor := color.red
+                    else if coveragePercentage < 90
+                        coverageColor := color.orange
+                    else
+                        coverageColor := color.green
+                        
+                    rangeText = actualStartDateStr + " to " + actualEndDateStr + " (" + str.tostring(math.round(coveragePercentage)) + "% coverage)"
+                    table.cell(statsTable, 1, barInfoRow, rangeText, text_color=coverageColor, text_size=size.small)
+                    table.merge_cells(statsTable, 1, barInfoRow, 5, barInfoRow)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Alerts - SIN CAMBIOS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+alertcondition(longSignal, title="Long Signal", message="BB RSI ATR Strategy: Long Signal")
+alertcondition(shortSignal, title="Short Signal", message="BB RSI ATR Strategy: Short Signal")
+alertcondition(pendingLongEntry, title="Long Entry", message="BB RSI ATR Strategy: Long Entry")
+alertcondition(pendingShortEntry, title="Short Entry", message="BB RSI ATR Strategy: Short Entry")
+
+if showEntryStatus and barstate.islast
+    var statusText = ""
+    
+    if array.size(activeTrades) > 0
+        statusText := "Operaciones activas: " + str.tostring(array.size(activeTrades))
+        lastTrade = array.get(activeTrades, array.size(activeTrades) - 1)
+        statusText += " | Última: " + (lastTrade.direction == 1 ? "LONG" : "SHORT") + 
+                     " | Entrada: " + str.tostring(lastTrade.entryPrice, "#.####")
+    else
+        statusText := "No hay operaciones activas"
+    
+    if pendingLongEntry
+        statusText += " | Entrada LONG pendiente"
+    if pendingShortEntry
+        statusText += " | Entrada SHORT pendiente"
+        
+    statusText += " | WR: " + str.tostring(winRateTotal, "#.##") + "% | ND: " + str.tostring(ndPercentage, "#.##") + "%"
+    statusText += " | Mode: " + (unifiedTPSL ? "UNIFIED" : "SEPARATED")
+    
+    if statusText != ""
+        runtime.error(statusText)
