@@ -93,6 +93,12 @@ showGeneralSignals = input.bool(true, title="Mostrar Puntos de Señal", group=de
 entryGroup = "Valores de Entrada"
 showEntryStatus = input.bool(false, title="Entradas en línea de estado", group=entryGroup)
 
+// 11. SMA FILTER
+smaGroup = "SMA Filter"
+useSMAFilter = input.bool(false, title="Use SMA Filter", group=smaGroup)
+smaLength = input.int(100, title="SMA Length", minval=1, group=smaGroup)
+smaDirection = input.string("Mayor", title="Price vs SMA", options=["Mayor", "Menor"], group=smaGroup)
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NUEVOS INPUTS PARA PANELES ESTADÍSTICOS AVANZADOS CON TOGGLE
@@ -158,6 +164,8 @@ isInDateRange = time >= startDate and time <= endDate
 rsi = ta.rsi(close, rsiLength)
 atr = ta.atr(atrLength)
 volAvg = ta.sma(volume, volumenLength)
+smaValue = ta.sma(close, smaLength)
+smaCondition = smaDirection == "Mayor" ? close > smaValue : close < smaValue
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Signal Generation System (3 Phases) - SOLO LONG
@@ -183,7 +191,7 @@ if barstate.isconfirmed
 
 // FASE 3: Señal final LONG
 noRecentSignal = bar_index - signalBarIndex >= securityCandle
-longSignal = phase2Long[1] and isInDateRange and (not useSecurityCandle or noRecentSignal)
+longSignal = phase2Long[1] and isInDateRange and (not useSecurityCandle or noRecentSignal) and (not useSMAFilter or smaCondition)
 
 if longSignal
     signalBarIndex := bar_index
@@ -511,6 +519,7 @@ plot(volume, "Volume", display=display.data_window)
 plot(showBB ? middle : na, "Middle Band", color.blue)
 plot(na, "Upper Band", color.red)  // Oculta banda superior
 plot(showBB ? lower : na, "Lower Band", color.green)
+plot(useSMAFilter ? smaValue : na, "SMA", color.orange)
 
 var float entry1 = na, var float sl1 = na, var float tp1_1 = na, var float tp2_1 = na
 var float entry2 = na, var float sl2 = na, var float tp1_2 = na, var float tp2_2 = na
@@ -695,6 +704,11 @@ if showParametersTable and barstate.islast
     table.cell(paramsTable, 0, 13, "Min Win Rate", text_color=color.white, bgcolor=color.gray, text_size=size.small)
     table.cell(paramsTable, 1, 13, str.tostring(minWinRate, "#.##") + "%", text_color=color.white, text_size=size.small)
     table.cell(paramsTable, 2, 13, "Required", text_color=color.white, text_size=size.small)
+
+    // SMA Filter
+    table.cell(paramsTable, 0, 14, "SMA Length", text_color=color.white, bgcolor=color.orange, text_size=size.small)
+    table.cell(paramsTable, 1, 14, str.tostring(smaLength), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, 14, useSMAFilter ? smaDirection : "OFF", text_color=color.white, bgcolor=useSMAFilter ? color.green : color.red, text_size=size.small)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Debug Table - PARA LONG
