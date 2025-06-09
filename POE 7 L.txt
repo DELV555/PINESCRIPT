@@ -636,7 +636,7 @@ tp1_pct = longTP1
 tp2_pct = longTP2
 sl_pct  = -longSL
 tp2_effective = (tp1_pct * 0.5 + tp2_pct * 0.5)
-E = (tp1_pct * tp1_hits_pct) + (tp2_effective * tp2_hits_pct) + (sl_pct * sl_hits_pct)
+E := (tp1_pct * tp1_hits_pct) + (tp2_effective * tp2_hits_pct) + (sl_pct * sl_hits_pct)
 
 hline(50, "RSI Mid Line", color.gray, hline.style_dotted)
 hline(rsiOversold, "RSI Oversold", color.green, hline.style_dashed)
