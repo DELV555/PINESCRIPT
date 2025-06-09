@@ -632,6 +632,8 @@ hline(rsiOversold, "RSI Oversold", color.green, hline.style_dashed)
 
 rsiSMA = ta.sma(rsiIndicator, 14)
 plot(rsiSMA, "RSI SMA", color.rgb(247, 111, 7), 1, display=display.pane)
+plot(E, title="Esperanza (E)", color=color.new(color.green, 0), linewidth=2, display=display.pane)
+hline(0, "Umbral de Rentabilidad", color=color.red, linestyle=hline.style_dashed, display=display.pane)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Parameters Table - CON VOLUME AVERAGE LENGTH PARA LONG
@@ -766,6 +768,17 @@ if totalTrades > 0
     winRateTotal := 100 * tp1Count / totalTrades
     ndPercentage := 100 * ndCount / totalTrades
 
+// ===== Esperanza Matemática =====
+tp1_hits_pct = totalTrades > 0 ? tp1Count / totalTrades : 0.0
+tp2_hits_pct = totalTrades > 0 ? tp2Count / totalTrades : 0.0
+sl_hits_pct  = totalTrades > 0 ? slCount / totalTrades : 0.0
+
+tp1_pct = longTP1
+tp2_pct = longTP2
+sl_pct  = -longSL
+tp2_effective = (tp1_pct * 0.5 + tp2_pct * 0.5)
+float E = (tp1_pct * tp1_hits_pct) + (tp2_effective * tp2_hits_pct) + (sl_pct * sl_hits_pct)
+
 float recoveryProbability = operationsAfterLoss > 0 ? 100 * winsAfterLoss / operationsAfterLoss : 0.0
 float minWinRate = 100 * longSL / (longSL + longTP1)
 float totalNetProfit = (tp1Count * longTP1) - (slCount * longSL)
@@ -852,6 +865,14 @@ f_getColorByPr(pct) =>
     else
         color.new(#f44336, 0)  // Rojo - Bajo
 
+f_getColorByE(val) =>
+    if val > 0
+        color.new(#4CAF50, 0)
+    else if val == 0
+        color.rgb(247, 111, 7)
+    else
+        color.new(#f44336, 0)
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TABLA UNIFICADA ELEGANTE CON 3 SECCIONES SECUENCIALES
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -861,8 +882,8 @@ if barstate.islast and showDetailedStats
     maxColumns = math.max(4, 1 + (totalActiveYears * 2))  // Máximo entre 4 (global) y columnas anuales/mensuales
     
     // Calcular filas totales
-    globalRows = 10
-    annualRows = enableAnnualPanel ? 9 : 0
+    globalRows = 11
+    annualRows = enableAnnualPanel ? 10 : 0
     monthlyRows = enableMonthlyPanel ? 15 : 0
     totalRows = globalRows + annualRows + monthlyRows
     
@@ -954,6 +975,13 @@ if barstate.islast and showDetailedStats
     table.cell(unifiedTable, 2, currentRow, str.tostring(prPct, "#.##") + "%", bgcolor=f_getColorByPr(prPct), text_color=color.white, text_size=size.small)
     table.cell(unifiedTable, 3, currentRow, prPct >= 70 ? "🟢" : prPct >= 50 ? "🟠" : "🔴", bgcolor=color.white, text_color=color.black, text_size=size.small)
     currentRow += 1
+
+    // Esperanza Matemática
+    table.cell(unifiedTable, 0, currentRow, "E", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+    table.cell(unifiedTable, 1, currentRow, str.tostring(E, "#.##"), bgcolor=color.white, text_color=color.black, text_size=size.small)
+    table.cell(unifiedTable, 2, currentRow, str.tostring(E, "#.##"), bgcolor=f_getColorByE(E), text_color=color.white, text_size=size.small)
+    table.cell(unifiedTable, 3, currentRow, E > 0 ? "🟢" : E == 0 ? "🟠" : "🔴", bgcolor=color.white, text_color=color.black, text_size=size.small)
+    currentRow += 1
     
     // ═══════════════════════════════════════════════════════════════════════════════
     // SECCIÓN 2: ANÁLISIS ANUAL (SI ESTÁ HABILITADO)
@@ -976,7 +1004,7 @@ if barstate.islast and showDetailedStats
         currentRow += 1
         
         // DATOS ANUALES
-        metricsAnnual = array.from("Total Trader", "TP1 Hits", "TP2 Hits", "SL Hits", "Nd Trader", "Max TP1", "Max SL")
+        metricsAnnual = array.from("Total Trader", "TP1 Hits", "TP2 Hits", "SL Hits", "Nd Trader", "Max TP1", "Max SL", "E")
         
         for metricIdx = 0 to array.size(metricsAnnual) - 1
             metricName = array.get(metricsAnnual, metricIdx)
@@ -1021,6 +1049,13 @@ if barstate.islast and showDetailedStats
                     maxSLExample = 2
                     table.cell(unifiedTable, (yearIdx * 2) + 1, currentRow, str.tostring(maxSLExample), bgcolor=color.white, text_color=color.black, text_size=size.small)
                     table.cell(unifiedTable, (yearIdx * 2) + 2, currentRow, "", bgcolor=color.white, text_size=size.small)
+                else if metricName == "E"
+                    tp1PctYear = tradesYear > 0 ? (tp1Year / tradesYear) : 0
+                    tp2PctYear = tradesYear > 0 ? (tp2Year / tradesYear) : 0
+                    slPctYear = tradesYear > 0 ? (slYear / tradesYear) : 0
+                    eYear = (tp1_pct * tp1PctYear) + (tp2_effective * tp2PctYear) + (sl_pct * slPctYear)
+                    table.cell(unifiedTable, (yearIdx * 2) + 1, currentRow, str.tostring(eYear, "#.##"), bgcolor=color.white, text_color=color.black, text_size=size.small)
+                    table.cell(unifiedTable, (yearIdx * 2) + 2, currentRow, str.tostring(eYear, "#.##"), bgcolor=f_getColorByE(eYear), text_color=color.white, text_size=size.small)
             
             currentRow += 1
     
