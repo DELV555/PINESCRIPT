@@ -93,6 +93,7 @@ showGeneralSignals = input.bool(true, title="Mostrar Puntos de Señal", group=de
 entryGroup = "Valores de Entrada"
 showEntryStatus = input.bool(false, title="Entradas en línea de estado", group=entryGroup)
 
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // NUEVOS INPUTS PARA PANELES ESTADÍSTICOS AVANZADOS CON TOGGLE
 // ═══════════════════════════════════════════════════════════════════════════════
