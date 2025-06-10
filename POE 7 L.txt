@@ -713,10 +713,6 @@ if showParametersTable and barstate.islast
     table.cell(paramsTable, 2, 12, useATR ? "ON" : "OFF", text_color=color.white, bgcolor=useATR ? color.green : color.red, text_size=size.small)
     
     // Calculated Values
-    float minWinRate = 100 * longSL / (longSL + longTP1)
-    table.cell(paramsTable, 0, 13, "Min Win Rate", text_color=color.white, bgcolor=color.gray, text_size=size.small)
-    table.cell(paramsTable, 1, 13, str.tostring(minWinRate, "#.##") + "%", text_color=color.white, text_size=size.small)
-    table.cell(paramsTable, 2, 13, "Required", text_color=color.white, text_size=size.small)
 
     // SMA Filter
     table.cell(paramsTable, 0, 14, "SMA Length", text_color=color.white, bgcolor=color.orange, text_size=size.small)
@@ -780,7 +776,6 @@ if totalTrades > 0
     ndPercentage := 100 * ndCount / totalTrades
 
 float recoveryProbability = operationsAfterLoss > 0 ? 100 * winsAfterLoss / operationsAfterLoss : 0.0
-float minWinRate = 100 * longSL / (longSL + longTP1)
 float totalNetProfit = (tp1Count * longTP1) - (slCount * longSL)
 float maxDrawdown = maxLossStreak * longSL
 float recoveryFactor = maxDrawdown > 0 ? totalNetProfit / maxDrawdown : 0.0
@@ -898,11 +893,9 @@ if barstate.islast and showDetailedStats
     
     currentRow = 0
     
-    // FILA 0 - HEADER PRINCIPAL GLOBAL (incluye E y E%)
+    // FILA 0 - HEADER PRINCIPAL GLOBAL (incluye E)
     string globalTitle = "ANÁLISIS GLOBAL DE ESTADÍSTICAS"
     globalTitle += " | E: " + str.tostring(E, "#.##")
-    float ePercent = 100 * longSL / (longSL + longTP1)
-    globalTitle += " | E%: " + str.tostring(ePercent, "#.##") + "%"
     table.cell(unifiedTable, 0, currentRow, globalTitle,
               bgcolor=color.new(#0071bc, 0), text_color=color.white,
               text_size=size.small)
