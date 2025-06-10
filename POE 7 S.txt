@@ -683,11 +683,6 @@ if showParametersTable and barstate.islast
     table.cell(paramsTable, 2, 11, useATR ? "ON" : "OFF", text_color=color.white, bgcolor=useATR ? color.green : color.red, text_size=size.small)
     
     // Calculated Values
-    float minWinRate = 100 * shortSL / (shortSL + shortTP1)
-    table.cell(paramsTable, 0, 12, "Min Win Rate", text_color=color.white, bgcolor=color.gray, text_size=size.small)
-    table.cell(paramsTable, 1, 12, str.tostring(minWinRate, "#.##") + "%", text_color=color.white, text_size=size.small)
-    table.cell(paramsTable, 2, 12, "Required", text_color=color.white, text_size=size.small)
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Debug Table - SIMPLIFICADO
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -745,7 +740,6 @@ if totalTrades > 0
     ndPercentage := 100 * ndCount / totalTrades
 
 float recoveryProbability = operationsAfterLoss > 0 ? 100 * winsAfterLoss / operationsAfterLoss : 0.0
-float minWinRate = 100 * shortSL / (shortSL + shortTP1)
 float totalNetProfit = (tp1Count * shortTP1) - (slCount * shortSL)
 float maxDrawdown = maxLossStreak * shortSL
 float recoveryFactor = maxDrawdown > 0 ? totalNetProfit / maxDrawdown : 0.0
@@ -1060,3 +1054,4 @@ if barstate.islast and showDetailedStats
             table.cell(unifiedTable, (yearIdx * 2) + 1, currentRow, str.tostring(totalYear, "#,###"), 
                       bgcolor=color.black, text_color=color.white, text_size=size.small)
             table.cell(unifiedTable, (yearIdx * 2) + 2, currentRow, "", bgcolor=color.black, text_size=size.small)
+
