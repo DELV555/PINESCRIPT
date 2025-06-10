@@ -865,13 +865,6 @@ f_getColorByPr(pct) =>
     else
         color.new(#f44336, 0)  // Rojo - Bajo
 
-f_getColorByE(val) =>
-    if val > 0
-        color.new(#4CAF50, 0)
-    else if val == 0
-        color.rgb(247, 111, 7)
-    else
-        color.new(#f44336, 0)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TABLA UNIFICADA ELEGANTE CON 3 SECCIONES SECUENCIALES
@@ -905,9 +898,13 @@ if barstate.islast and showDetailedStats
     
     currentRow = 0
     
-    // FILA 0 - HEADER PRINCIPAL GLOBAL
-    table.cell(unifiedTable, 0, currentRow, "ANÁLISIS GLOBAL DE ESTADÍSTICAS", 
-              bgcolor=color.new(#0071bc, 0), text_color=color.white, 
+    // FILA 0 - HEADER PRINCIPAL GLOBAL (incluye E y E%)
+    string globalTitle = "ANÁLISIS GLOBAL DE ESTADÍSTICAS"
+    globalTitle += " | E: " + str.tostring(E, "#.##")
+    float ePercent = 100 * longSL / (longSL + longTP1)
+    globalTitle += " | E%: " + str.tostring(ePercent, "#.##") + "%"
+    table.cell(unifiedTable, 0, currentRow, globalTitle,
+              bgcolor=color.new(#0071bc, 0), text_color=color.white,
               text_size=size.small)
     table.merge_cells(unifiedTable, 0, currentRow, 3, currentRow)
     currentRow += 1
@@ -976,12 +973,6 @@ if barstate.islast and showDetailedStats
     table.cell(unifiedTable, 3, currentRow, prPct >= 70 ? "🟢" : prPct >= 50 ? "🟠" : "🔴", bgcolor=color.white, text_color=color.black, text_size=size.small)
     currentRow += 1
 
-    // Esperanza Matemática
-    table.cell(unifiedTable, 0, currentRow, "E", bgcolor=color.gray, text_color=color.white, text_size=size.small)
-    table.cell(unifiedTable, 1, currentRow, str.tostring(E, "#.##"), bgcolor=color.white, text_color=color.black, text_size=size.small)
-    table.cell(unifiedTable, 2, currentRow, str.tostring(E, "#.##"), bgcolor=f_getColorByE(E), text_color=color.white, text_size=size.small)
-    table.cell(unifiedTable, 3, currentRow, E > 0 ? "🟢" : E == 0 ? "🟠" : "🔴", bgcolor=color.white, text_color=color.black, text_size=size.small)
-    currentRow += 1
     
     // ═══════════════════════════════════════════════════════════════════════════════
     // SECCIÓN 2: ANÁLISIS ANUAL (SI ESTÁ HABILITADO)
@@ -1004,7 +995,7 @@ if barstate.islast and showDetailedStats
         currentRow += 1
         
         // DATOS ANUALES
-        metricsAnnual = array.from("Total Trader", "TP1 Hits", "TP2 Hits", "SL Hits", "Nd Trader", "Max TP1", "Max SL", "E")
+        metricsAnnual = array.from("Total Trader", "TP1 Hits", "TP2 Hits", "SL Hits", "Nd Trader", "Max TP1", "Max SL")
         
         for metricIdx = 0 to array.size(metricsAnnual) - 1
             metricName = array.get(metricsAnnual, metricIdx)
@@ -1049,13 +1040,6 @@ if barstate.islast and showDetailedStats
                     maxSLExample = 2
                     table.cell(unifiedTable, (yearIdx * 2) + 1, currentRow, str.tostring(maxSLExample), bgcolor=color.white, text_color=color.black, text_size=size.small)
                     table.cell(unifiedTable, (yearIdx * 2) + 2, currentRow, "", bgcolor=color.white, text_size=size.small)
-                else if metricName == "E"
-                    tp1PctYear = tradesYear > 0 ? (tp1Year / tradesYear) : 0
-                    tp2PctYear = tradesYear > 0 ? (tp2Year / tradesYear) : 0
-                    slPctYear = tradesYear > 0 ? (slYear / tradesYear) : 0
-                    eYear = (tp1_pct * tp1PctYear) + (tp2_effective * tp2PctYear) + (sl_pct * slPctYear)
-                    table.cell(unifiedTable, (yearIdx * 2) + 1, currentRow, str.tostring(eYear, "#.##"), bgcolor=color.white, text_color=color.black, text_size=size.small)
-                    table.cell(unifiedTable, (yearIdx * 2) + 2, currentRow, str.tostring(eYear, "#.##"), bgcolor=f_getColorByE(eYear), text_color=color.white, text_size=size.small)
             
             currentRow += 1
     
