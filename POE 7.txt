@@ -605,45 +605,44 @@ if array.size(activeTrades) > 0
             bool slHitThisCandle = low <= trade.stopLoss
             if slHitThisCandle and not trade.slHit
                 trade.slHit := true
-                
-                if showEntryExitLines
-                    if trade.tp1Hit
-                        label.new(bar_index, low, "SL after TP1 #" + str.tostring(trade.id), 
+
+                if trade.tp1Hit
+                    if showEntryExitLines
+                        label.new(bar_index, low, "SL after TP1 #" + str.tostring(trade.id),
                                  color=color.orange, style=label.style_label_up, textcolor=color.white)
-                        
-                        totalTrades := totalTrades + 1
-                        tp1Count := tp1Count + 1
-                        longTrades := longTrades + 1
-                        longTP1Count := longTP1Count + 1
-                        
-                        int tradeYear = year(time)
-                        updateYearlyStats(tradeYear, true, true, false)
-                        
-                        currentWinStreak := currentWinStreak + 1
-                        maxWinStreak := math.max(maxWinStreak, currentWinStreak)
-                        currentLossStreak := 0
-                        
-                        if lastOpWasLoss
-                            operationsAfterLoss := operationsAfterLoss + 1
-                            winsAfterLoss := winsAfterLoss + 1
-                            lastOpWasLoss := false
-                    else
-                        label.new(bar_index, low, "SL HIT #" + str.tostring(trade.id), 
+                    totalTrades := totalTrades + 1
+                    tp1Count := tp1Count + 1
+                    longTrades := longTrades + 1
+                    longTP1Count := longTP1Count + 1
+
+                    int tradeYear = year(time)
+                    updateYearlyStats(tradeYear, true, true, false)
+
+                    currentWinStreak := currentWinStreak + 1
+                    maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                    currentLossStreak := 0
+
+                    if lastOpWasLoss
+                        operationsAfterLoss := operationsAfterLoss + 1
+                        winsAfterLoss := winsAfterLoss + 1
+                        lastOpWasLoss := false
+                else
+                    if showEntryExitLines
+                        label.new(bar_index, low, "SL HIT #" + str.tostring(trade.id),
                                  color=color.red, style=label.style_label_up, textcolor=color.white)
-                        
-                        totalTrades := totalTrades + 1
-                        slCount := slCount + 1
-                        longTrades := longTrades + 1
-                        longSLCount := longSLCount + 1
-                        
-                        int tradeYear = year(time)
-                        updateYearlyStats(tradeYear, true, false, false)
-                        
-                        currentLossStreak := currentLossStreak + 1
-                        maxLossStreak := math.max(maxLossStreak, currentLossStreak)
-                        currentWinStreak := 0
-                        lastOpWasLoss := true
-                
+                    totalTrades := totalTrades + 1
+                    slCount := slCount + 1
+                    longTrades := longTrades + 1
+                    longSLCount := longSLCount + 1
+
+                    int tradeYear = year(time)
+                    updateYearlyStats(tradeYear, true, false, false)
+
+                    currentLossStreak := currentLossStreak + 1
+                    maxLossStreak := math.max(maxLossStreak, currentLossStreak)
+                    currentWinStreak := 0
+                    lastOpWasLoss := true
+
                 array.remove(activeTrades, i)
                 continue
         
@@ -713,45 +712,44 @@ if array.size(activeTrades) > 0
             bool slHitThisCandle = high >= trade.stopLoss
             if slHitThisCandle and not trade.slHit
                 trade.slHit := true
-                
-                if showEntryExitLines
-                    if trade.tp1Hit
-                        label.new(bar_index, high, "SL after TP1 #" + str.tostring(trade.id), 
+
+                if trade.tp1Hit
+                    if showEntryExitLines
+                        label.new(bar_index, high, "SL after TP1 #" + str.tostring(trade.id),
                                  color=color.orange, style=label.style_label_down, textcolor=color.white)
-                        
-                        totalTrades := totalTrades + 1
-                        tp1Count := tp1Count + 1
-                        shortTrades := shortTrades + 1
-                        shortTP1Count := shortTP1Count + 1
-                        
-                        int tradeYear = year(time)
-                        updateYearlyStats(tradeYear, false, true, false)
-                        
-                        currentWinStreak := currentWinStreak + 1
-                        maxWinStreak := math.max(maxWinStreak, currentWinStreak)
-                        currentLossStreak := 0
-                        
-                        if lastOpWasLoss
-                            operationsAfterLoss := operationsAfterLoss + 1
-                            winsAfterLoss := winsAfterLoss + 1
-                            lastOpWasLoss := false
-                    else
-                        label.new(bar_index, high, "SL HIT #" + str.tostring(trade.id), 
+                    totalTrades := totalTrades + 1
+                    tp1Count := tp1Count + 1
+                    shortTrades := shortTrades + 1
+                    shortTP1Count := shortTP1Count + 1
+
+                    int tradeYear = year(time)
+                    updateYearlyStats(tradeYear, false, true, false)
+
+                    currentWinStreak := currentWinStreak + 1
+                    maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                    currentLossStreak := 0
+
+                    if lastOpWasLoss
+                        operationsAfterLoss := operationsAfterLoss + 1
+                        winsAfterLoss := winsAfterLoss + 1
+                        lastOpWasLoss := false
+                else
+                    if showEntryExitLines
+                        label.new(bar_index, high, "SL HIT #" + str.tostring(trade.id),
                                  color=color.red, style=label.style_label_down, textcolor=color.white)
-                        
-                        totalTrades := totalTrades + 1
-                        slCount := slCount + 1
-                        shortTrades := shortTrades + 1
-                        shortSLCount := shortSLCount + 1
-                        
-                        int tradeYear = year(time)
-                        updateYearlyStats(tradeYear, false, false, false)
-                        
-                        currentLossStreak := currentLossStreak + 1
-                        maxLossStreak := math.max(maxLossStreak, currentLossStreak)
-                        currentWinStreak := 0
-                        lastOpWasLoss := true
-                
+                    totalTrades := totalTrades + 1
+                    slCount := slCount + 1
+                    shortTrades := shortTrades + 1
+                    shortSLCount := shortSLCount + 1
+
+                    int tradeYear = year(time)
+                    updateYearlyStats(tradeYear, false, false, false)
+
+                    currentLossStreak := currentLossStreak + 1
+                    maxLossStreak := math.max(maxLossStreak, currentLossStreak)
+                    currentWinStreak := 0
+                    lastOpWasLoss := true
+
                 array.remove(activeTrades, i)
                 continue
 
@@ -1021,16 +1019,6 @@ if showParametersTable and barstate.islast
     table.cell(paramsTable, 1, rowOffset + 7, useATR ? "ATR" : "FIXED", text_color=color.white, text_size=size.small)
     table.cell(paramsTable, 2, rowOffset + 7, useATR ? "ON" : "OFF", text_color=color.white, bgcolor=useATR ? color.green : color.red, text_size=size.small)
     
-    // Calculated Values
-    currentSLForCalc = unifiedTPSL ? fixedSL : longSL
-    currentTP1ForCalc = unifiedTPSL ? fixedTP1 : longTP1
-    float minWinRate = 100 * currentSLForCalc / (currentSLForCalc + currentTP1ForCalc)
-    table.cell(paramsTable, 0, rowOffset + 8, "Min Win Rate", text_color=color.white, bgcolor=color.gray, text_size=size.small)
-    table.cell(paramsTable, 1, rowOffset + 8, str.tostring(minWinRate, "#.##") + "%", text_color=color.white, text_size=size.small)
-    table.cell(paramsTable, 2, rowOffset + 8, unifiedTPSL ? "Unified" : "L Based", text_color=color.white, text_size=size.small)
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Debug Table - SIN CAMBIOS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 if showDebugTable and barstate.islast
@@ -1090,15 +1078,6 @@ if shortTrades > 0
 
 float recoveryProbability = operationsAfterLoss > 0 ? 100 * winsAfterLoss / operationsAfterLoss : 0.0
 
-// CALCULAR MIN WIN RATE SEGÚN MODO
-float minWinRateUnified = unifiedTPSL ? 100 * fixedSL / (fixedSL + fixedTP1) : 0.0
-float minWinRateLong = not unifiedTPSL ? 100 * longSL / (longSL + longTP1) : 0.0
-float minWinRateShort = not unifiedTPSL ? 100 * shortSL / (shortSL + shortTP1) : 0.0
-
-// USAR VALORES APROPIADOS PARA CÁLCULOS
-currentSLForProfit = unifiedTPSL ? fixedSL : ((longTrades > shortTrades) ? longSL : shortSL)
-currentTP1ForProfit = unifiedTPSL ? fixedTP1 : ((longTrades > shortTrades) ? longTP1 : shortTP1)
-
 float totalNetProfit = (tp1Count * currentTP1ForProfit) - (slCount * currentSLForProfit)
 float maxDrawdown = maxLossStreak * currentSLForProfit
 float recoveryFactor = maxDrawdown > 0 ? totalNetProfit / maxDrawdown : 0.0
@@ -1151,11 +1130,6 @@ if showStats and barstate.islast
     
     // MOSTRAR MIN WIN RATE SEGÚN MODO
     if unifiedTPSL
-        table.cell(statsTable, 3, streakRow, "E%: " + str.tostring(minWinRateUnified, "#.##") + "%", text_color=color.white, bgcolor=color.gray, text_size=size.small)
-    else
-        table.cell(statsTable, 3, streakRow, "EL%: " + str.tostring(minWinRateLong, "#.##") + "%", text_color=color.white, bgcolor=color.green, text_size=size.small)
-        table.cell(statsTable, 4, streakRow, "ES%: " + str.tostring(minWinRateShort, "#.##") + "%", text_color=color.white, bgcolor=color.red, text_size=size.small)
-    
     color rfColor = recoveryFactor >= 1.0 ? color.green : color.red
     int rfColumn = unifiedTPSL ? 4 : 5
     if rfColumn < 6
@@ -1227,10 +1201,7 @@ if showStats and barstate.islast
                 int ndForYear = map.contains(yearlyNDCount, currentYear) ? map.get(yearlyNDCount, currentYear) : 0
                 
                 float yearlyWinRate = totalForYear > 0 ? 100 * tp1ForYear / totalForYear : 0.0
-                float currentMinWinRate = unifiedTPSL ? minWinRateUnified : math.min(minWinRateLong, minWinRateShort)
-                color winRateColor = yearlyWinRate >= currentMinWinRate ? color.green : color.red
-                
-                table.cell(statsTable, 0, yearRow, str.tostring(currentYear), text_color=color.white, bgcolor=color.gray, text_size=size.small)
+                color winRateColor = yearlyWinRate >= 50 ? color.green : color.red
                 table.cell(statsTable, 1, yearRow, str.tostring(totalForYear), text_color=color.white, text_size=size.small)
                 table.cell(statsTable, 2, yearRow, str.tostring(yearlyWinRate, "#.##") + "%", text_color=color.white, bgcolor=winRateColor, text_size=size.small)
                 table.cell(statsTable, 3, yearRow, str.tostring(longForYear), text_color=color.white, bgcolor=color.green, text_size=size.small)
@@ -1296,3 +1267,4 @@ if showEntryStatus and barstate.islast
     
     if statusText != ""
         runtime.error(statusText)
+

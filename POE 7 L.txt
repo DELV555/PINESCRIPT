@@ -93,6 +93,13 @@ showGeneralSignals = input.bool(true, title="Mostrar Puntos de Señal", group=de
 entryGroup = "Valores de Entrada"
 showEntryStatus = input.bool(false, title="Entradas en línea de estado", group=entryGroup)
 
+// 11. SMA FILTER
+smaGroup = "SMA Filter"
+useSMAFilter = input.bool(false, title="Use SMA Filter", group=smaGroup)
+smaLength = input.int(100, title="SMA Length", minval=1, group=smaGroup)
+smaDirection = input.string("Mayor", title="Price vs SMA", options=["Mayor", "Menor"], group=smaGroup)
+
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // NUEVOS INPUTS PARA PANELES ESTADÍSTICOS AVANZADOS CON TOGGLE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -108,8 +115,8 @@ var int totalActiveYears = 0
 
 if barstate.isfirst
     array.clear(activeYears)
-    for year = startYear to endYear
-        array.push(activeYears, year)
+    for yr = startYear to endYear
+        array.push(activeYears, yr)
     totalActiveYears := array.size(activeYears)
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -157,6 +164,8 @@ isInDateRange = time >= startDate and time <= endDate
 rsi = ta.rsi(close, rsiLength)
 atr = ta.atr(atrLength)
 volAvg = ta.sma(volume, volumenLength)
+smaValue = ta.sma(close, smaLength)
+smaCondition = smaDirection == "Mayor" ? close > smaValue : close < smaValue
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Signal Generation System (3 Phases) - SOLO LONG
@@ -182,7 +191,7 @@ if barstate.isconfirmed
 
 // FASE 3: Señal final LONG
 noRecentSignal = bar_index - signalBarIndex >= securityCandle
-longSignal = phase2Long[1] and isInDateRange and (not useSecurityCandle or noRecentSignal)
+longSignal = phase2Long[1] and isInDateRange and (not useSecurityCandle or noRecentSignal) and (not useSMAFilter or smaCondition)
 
 if longSignal
     signalBarIndex := bar_index
@@ -272,6 +281,7 @@ var int maxWinStreak = 0
 var int operationsAfterLoss = 0
 var int winsAfterLoss = 0
 var bool lastOpWasLoss = false
+float E = na
 
 var map<int, int> yearlyTotalTrades = map.new<int, int>()
 var map<int, int> yearlyTP1Count = map.new<int, int>()
@@ -442,45 +452,44 @@ if array.size(activeTrades) > 0
         bool slHitThisCandle = low <= trade.stopLoss
         if slHitThisCandle and not trade.slHit
             trade.slHit := true
-            
-            if showEntryExitLines
-                if trade.tp1Hit
-                    label.new(bar_index, low, "SL after TP1 #" + str.tostring(trade.id), 
+
+            if trade.tp1Hit
+                if showEntryExitLines
+                    label.new(bar_index, low, "SL after TP1 #" + str.tostring(trade.id),
                              color=color.orange, style=label.style_label_up, textcolor=color.white)
-                    
-                    totalTrades := totalTrades + 1
-                    tp1Count := tp1Count + 1
-                    
-                    int tradeYear = year(time)
-                    int tradeMonth = month(time)
-                    updateYearlyStats(tradeYear, true, false)
-                    updateMonthlyStats(tradeYear, tradeMonth, true)
-                    
-                    currentWinStreak := currentWinStreak + 1
-                    maxWinStreak := math.max(maxWinStreak, currentWinStreak)
-                    currentLossStreak := 0
-                    
-                    if lastOpWasLoss
-                        operationsAfterLoss := operationsAfterLoss + 1
-                        winsAfterLoss := winsAfterLoss + 1
-                        lastOpWasLoss := false
-                else
-                    label.new(bar_index, low, "SL HIT #" + str.tostring(trade.id), 
+                totalTrades := totalTrades + 1
+                tp1Count := tp1Count + 1
+
+                int tradeYear = year(time)
+                int tradeMonth = month(time)
+                updateYearlyStats(tradeYear, true, false)
+                updateMonthlyStats(tradeYear, tradeMonth, true)
+
+                currentWinStreak := currentWinStreak + 1
+                maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                currentLossStreak := 0
+
+                if lastOpWasLoss
+                    operationsAfterLoss := operationsAfterLoss + 1
+                    winsAfterLoss := winsAfterLoss + 1
+                    lastOpWasLoss := false
+            else
+                if showEntryExitLines
+                    label.new(bar_index, low, "SL HIT #" + str.tostring(trade.id),
                              color=color.red, style=label.style_label_up, textcolor=color.white)
-                    
-                    totalTrades := totalTrades + 1
-                    slCount := slCount + 1
-                    
-                    int tradeYear = year(time)
-                    int tradeMonth = month(time)
-                    updateYearlyStats(tradeYear, false, false)
-                    updateMonthlyStats(tradeYear, tradeMonth, false)
-                    
-                    currentLossStreak := currentLossStreak + 1
-                    maxLossStreak := math.max(maxLossStreak, currentLossStreak)
-                    currentWinStreak := 0
-                    lastOpWasLoss := true
-            
+                totalTrades := totalTrades + 1
+                slCount := slCount + 1
+
+                int tradeYear = year(time)
+                int tradeMonth = month(time)
+                updateYearlyStats(tradeYear, false, false)
+                updateMonthlyStats(tradeYear, tradeMonth, false)
+
+                currentLossStreak := currentLossStreak + 1
+                maxLossStreak := math.max(maxLossStreak, currentLossStreak)
+                currentWinStreak := 0
+                lastOpWasLoss := true
+
             array.remove(activeTrades, i)
             continue
 
@@ -510,6 +519,7 @@ plot(volume, "Volume", display=display.data_window)
 plot(showBB ? middle : na, "Middle Band", color.blue)
 plot(na, "Upper Band", color.red)  // Oculta banda superior
 plot(showBB ? lower : na, "Lower Band", color.green)
+plot(useSMAFilter ? smaValue : na, "SMA", color.orange)
 
 var float entry1 = na, var float sl1 = na, var float tp1_1 = na, var float tp2_1 = na
 var float entry2 = na, var float sl2 = na, var float tp1_2 = na, var float tp2_2 = na
@@ -617,11 +627,24 @@ rsiIndicator = ta.rsi(close, rsiLength)
 rsiPanel = rsiIndicator
 plot(rsiPanel, "RSI", color.purple, 2, display=display.pane)
 
+// ===== Esperanza Matemática =====
+tp1_hits_pct = totalTrades > 0 ? tp1Count / totalTrades : 0.0
+tp2_hits_pct = totalTrades > 0 ? tp2Count / totalTrades : 0.0
+sl_hits_pct  = totalTrades > 0 ? slCount / totalTrades : 0.0
+
+tp1_pct = longTP1
+tp2_pct = longTP2
+sl_pct  = -longSL
+tp2_effective = (tp1_pct * 0.5 + tp2_pct * 0.5)
+E := (tp1_pct * tp1_hits_pct) + (tp2_effective * tp2_hits_pct) + (sl_pct * sl_hits_pct)
+
 hline(50, "RSI Mid Line", color.gray, hline.style_dotted)
 hline(rsiOversold, "RSI Oversold", color.green, hline.style_dashed)
 
 rsiSMA = ta.sma(rsiIndicator, 14)
 plot(rsiSMA, "RSI SMA", color.rgb(247, 111, 7), 1, display=display.pane)
+plot(E, title="Esperanza (E)", color=color.new(color.green, 0), linewidth=2, display=display.pane)
+hline(0, "Umbral de Rentabilidad", color=color.red, linestyle=hline.style_dashed)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Parameters Table - CON VOLUME AVERAGE LENGTH PARA LONG
@@ -690,10 +713,11 @@ if showParametersTable and barstate.islast
     table.cell(paramsTable, 2, 12, useATR ? "ON" : "OFF", text_color=color.white, bgcolor=useATR ? color.green : color.red, text_size=size.small)
     
     // Calculated Values
-    float minWinRate = 100 * longSL / (longSL + longTP1)
-    table.cell(paramsTable, 0, 13, "Min Win Rate", text_color=color.white, bgcolor=color.gray, text_size=size.small)
-    table.cell(paramsTable, 1, 13, str.tostring(minWinRate, "#.##") + "%", text_color=color.white, text_size=size.small)
-    table.cell(paramsTable, 2, 13, "Required", text_color=color.white, text_size=size.small)
+
+    // SMA Filter
+    table.cell(paramsTable, 0, 14, "SMA Length", text_color=color.white, bgcolor=color.orange, text_size=size.small)
+    table.cell(paramsTable, 1, 14, str.tostring(smaLength), text_color=color.white, text_size=size.small)
+    table.cell(paramsTable, 2, 14, useSMAFilter ? smaDirection : "OFF", text_color=color.white, bgcolor=useSMAFilter ? color.green : color.red, text_size=size.small)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Debug Table - PARA LONG
@@ -752,7 +776,6 @@ if totalTrades > 0
     ndPercentage := 100 * ndCount / totalTrades
 
 float recoveryProbability = operationsAfterLoss > 0 ? 100 * winsAfterLoss / operationsAfterLoss : 0.0
-float minWinRate = 100 * longSL / (longSL + longTP1)
 float totalNetProfit = (tp1Count * longTP1) - (slCount * longSL)
 float maxDrawdown = maxLossStreak * longSL
 float recoveryFactor = maxDrawdown > 0 ? totalNetProfit / maxDrawdown : 0.0
@@ -837,6 +860,15 @@ f_getColorByPr(pct) =>
     else
         color.new(#f44336, 0)  // Rojo - Bajo
 
+f_getColorByE(pct, ePct) =>
+    if pct < ePct
+        color.new(#f44336, 0)
+    else if pct < ePct + 5
+        color.rgb(247, 111, 7)
+    else
+        color.new(#4CAF50, 0)
+
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TABLA UNIFICADA ELEGANTE CON 3 SECCIONES SECUENCIALES
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -846,8 +878,8 @@ if barstate.islast and showDetailedStats
     maxColumns = math.max(4, 1 + (totalActiveYears * 2))  // Máximo entre 4 (global) y columnas anuales/mensuales
     
     // Calcular filas totales
-    globalRows = 10
-    annualRows = enableAnnualPanel ? 9 : 0
+    globalRows = 11
+    annualRows = enableAnnualPanel ? 10 : 0
     monthlyRows = enableMonthlyPanel ? 15 : 0
     totalRows = globalRows + annualRows + monthlyRows
     
@@ -866,12 +898,15 @@ if barstate.islast and showDetailedStats
     slPct = totalTrades > 0 ? (slCount / totalTrades) * 100 : 0
     ndPct = totalTrades > 0 ? (ndCount / totalTrades) * 100 : 0
     prPct = totalTrades > 0 ? ((tp1Count + tp2Count) / totalTrades) * 100 : 0
+    ePctGlobal = 100 * longSL / (longSL + longTP1)
     
     currentRow = 0
     
-    // FILA 0 - HEADER PRINCIPAL GLOBAL
-    table.cell(unifiedTable, 0, currentRow, "ANÁLISIS GLOBAL DE ESTADÍSTICAS", 
-              bgcolor=color.new(#0071bc, 0), text_color=color.white, 
+    // FILA 0 - HEADER PRINCIPAL GLOBAL (incluye E)
+    string globalTitle = "ANÁLISIS GLOBAL DE ESTADÍSTICAS"
+    globalTitle += " | E: " + str.tostring(E, "#.##")
+    table.cell(unifiedTable, 0, currentRow, globalTitle,
+              bgcolor=color.new(#0071bc, 0), text_color=color.white,
               text_size=size.small)
     table.merge_cells(unifiedTable, 0, currentRow, 3, currentRow)
     currentRow += 1
@@ -938,7 +973,18 @@ if barstate.islast and showDetailedStats
     table.cell(unifiedTable, 1, currentRow, "-", bgcolor=color.white, text_color=color.black, text_size=size.small)
     table.cell(unifiedTable, 2, currentRow, str.tostring(prPct, "#.##") + "%", bgcolor=f_getColorByPr(prPct), text_color=color.white, text_size=size.small)
     table.cell(unifiedTable, 3, currentRow, prPct >= 70 ? "🟢" : prPct >= 50 ? "🟠" : "🔴", bgcolor=color.white, text_color=color.black, text_size=size.small)
+    table.cell(unifiedTable, 4, currentRow, str.tostring(prPct, "#.##") + "%", bgcolor=f_getColorByPr(prPct), text_color=color.white, text_size=size.small)
+    table.cell(unifiedTable, 5, currentRow, str.tostring(ePctGlobal, "#.##") + "%", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+    for yearIdx = 0 to totalActiveYears - 1
+        currentYear = array.get(activeYears, yearIdx)
+        tradesYear = map.contains(yearlyTotalTrades, currentYear) ? map.get(yearlyTotalTrades, currentYear) : 0
+        tp1Year = map.contains(yearlyTP1Count, currentYear) ? map.get(yearlyTP1Count, currentYear) : 0
+        tp1PctYear = tradesYear > 0 ? (tp1Year / tradesYear) * 100 : 0
+        colIndex = 6 + yearIdx
+        cellColor = f_getColorByE(tp1PctYear, ePctGlobal)
+        table.cell(unifiedTable, colIndex, currentRow, str.tostring(tp1PctYear, "#.##") + "%", bgcolor=cellColor, text_color=color.white, text_size=size.small)
     currentRow += 1
+
     
     // ═══════════════════════════════════════════════════════════════════════════════
     // SECCIÓN 2: ANÁLISIS ANUAL (SI ESTÁ HABILITADO)

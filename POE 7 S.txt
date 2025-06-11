@@ -442,45 +442,44 @@ if array.size(activeTrades) > 0
         bool slHitThisCandle = high >= trade.stopLoss
         if slHitThisCandle and not trade.slHit
             trade.slHit := true
-            
-            if showEntryExitLines
-                if trade.tp1Hit
-                    label.new(bar_index, high, "SL after TP1 #" + str.tostring(trade.id), 
+
+            if trade.tp1Hit
+                if showEntryExitLines
+                    label.new(bar_index, high, "SL after TP1 #" + str.tostring(trade.id),
                              color=color.orange, style=label.style_label_down, textcolor=color.white)
-                    
-                    totalTrades := totalTrades + 1
-                    tp1Count := tp1Count + 1
-                    
-                    int tradeYear = year(time)
-                    int tradeMonth = month(time)
-                    updateYearlyStats(tradeYear, true, false)
-                    updateMonthlyStats(tradeYear, tradeMonth, true)
-                    
-                    currentWinStreak := currentWinStreak + 1
-                    maxWinStreak := math.max(maxWinStreak, currentWinStreak)
-                    currentLossStreak := 0
-                    
-                    if lastOpWasLoss
-                        operationsAfterLoss := operationsAfterLoss + 1
-                        winsAfterLoss := winsAfterLoss + 1
-                        lastOpWasLoss := false
-                else
-                    label.new(bar_index, high, "SL HIT #" + str.tostring(trade.id), 
+                totalTrades := totalTrades + 1
+                tp1Count := tp1Count + 1
+
+                int tradeYear = year(time)
+                int tradeMonth = month(time)
+                updateYearlyStats(tradeYear, true, false)
+                updateMonthlyStats(tradeYear, tradeMonth, true)
+
+                currentWinStreak := currentWinStreak + 1
+                maxWinStreak := math.max(maxWinStreak, currentWinStreak)
+                currentLossStreak := 0
+
+                if lastOpWasLoss
+                    operationsAfterLoss := operationsAfterLoss + 1
+                    winsAfterLoss := winsAfterLoss + 1
+                    lastOpWasLoss := false
+            else
+                if showEntryExitLines
+                    label.new(bar_index, high, "SL HIT #" + str.tostring(trade.id),
                              color=color.red, style=label.style_label_down, textcolor=color.white)
-                    
-                    totalTrades := totalTrades + 1
-                    slCount := slCount + 1
-                    
-                    int tradeYear = year(time)
-                    int tradeMonth = month(time)
-                    updateYearlyStats(tradeYear, false, false)
-                    updateMonthlyStats(tradeYear, tradeMonth, false)
-                    
-                    currentLossStreak := currentLossStreak + 1
-                    maxLossStreak := math.max(maxLossStreak, currentLossStreak)
-                    currentWinStreak := 0
-                    lastOpWasLoss := true
-            
+                totalTrades := totalTrades + 1
+                slCount := slCount + 1
+
+                int tradeYear = year(time)
+                int tradeMonth = month(time)
+                updateYearlyStats(tradeYear, false, false)
+                updateMonthlyStats(tradeYear, tradeMonth, false)
+
+                currentLossStreak := currentLossStreak + 1
+                maxLossStreak := math.max(maxLossStreak, currentLossStreak)
+                currentWinStreak := 0
+                lastOpWasLoss := true
+
             array.remove(activeTrades, i)
             continue
 
@@ -684,11 +683,6 @@ if showParametersTable and barstate.islast
     table.cell(paramsTable, 2, 11, useATR ? "ON" : "OFF", text_color=color.white, bgcolor=useATR ? color.green : color.red, text_size=size.small)
     
     // Calculated Values
-    float minWinRate = 100 * shortSL / (shortSL + shortTP1)
-    table.cell(paramsTable, 0, 12, "Min Win Rate", text_color=color.white, bgcolor=color.gray, text_size=size.small)
-    table.cell(paramsTable, 1, 12, str.tostring(minWinRate, "#.##") + "%", text_color=color.white, text_size=size.small)
-    table.cell(paramsTable, 2, 12, "Required", text_color=color.white, text_size=size.small)
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Debug Table - SIMPLIFICADO
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -746,7 +740,6 @@ if totalTrades > 0
     ndPercentage := 100 * ndCount / totalTrades
 
 float recoveryProbability = operationsAfterLoss > 0 ? 100 * winsAfterLoss / operationsAfterLoss : 0.0
-float minWinRate = 100 * shortSL / (shortSL + shortTP1)
 float totalNetProfit = (tp1Count * shortTP1) - (slCount * shortSL)
 float maxDrawdown = maxLossStreak * shortSL
 float recoveryFactor = maxDrawdown > 0 ? totalNetProfit / maxDrawdown : 0.0
@@ -1061,3 +1054,4 @@ if barstate.islast and showDetailedStats
             table.cell(unifiedTable, (yearIdx * 2) + 1, currentRow, str.tostring(totalYear, "#,###"), 
                       bgcolor=color.black, text_color=color.white, text_size=size.small)
             table.cell(unifiedTable, (yearIdx * 2) + 2, currentRow, "", bgcolor=color.black, text_size=size.small)
+
