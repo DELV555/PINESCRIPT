@@ -860,6 +860,14 @@ f_getColorByPr(pct) =>
     else
         color.new(#f44336, 0)  // Rojo - Bajo
 
+f_getColorByE(pct, ePct) =>
+    if pct < ePct
+        color.new(#f44336, 0)
+    else if pct < ePct + 5
+        color.rgb(247, 111, 7)
+    else
+        color.new(#4CAF50, 0)
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TABLA UNIFICADA ELEGANTE CON 3 SECCIONES SECUENCIALES
@@ -890,6 +898,7 @@ if barstate.islast and showDetailedStats
     slPct = totalTrades > 0 ? (slCount / totalTrades) * 100 : 0
     ndPct = totalTrades > 0 ? (ndCount / totalTrades) * 100 : 0
     prPct = totalTrades > 0 ? ((tp1Count + tp2Count) / totalTrades) * 100 : 0
+    ePctGlobal = 100 * longSL / (longSL + longTP1)
     
     currentRow = 0
     
@@ -964,6 +973,16 @@ if barstate.islast and showDetailedStats
     table.cell(unifiedTable, 1, currentRow, "-", bgcolor=color.white, text_color=color.black, text_size=size.small)
     table.cell(unifiedTable, 2, currentRow, str.tostring(prPct, "#.##") + "%", bgcolor=f_getColorByPr(prPct), text_color=color.white, text_size=size.small)
     table.cell(unifiedTable, 3, currentRow, prPct >= 70 ? "🟢" : prPct >= 50 ? "🟠" : "🔴", bgcolor=color.white, text_color=color.black, text_size=size.small)
+    table.cell(unifiedTable, 4, currentRow, str.tostring(prPct, "#.##") + "%", bgcolor=f_getColorByPr(prPct), text_color=color.white, text_size=size.small)
+    table.cell(unifiedTable, 5, currentRow, str.tostring(ePctGlobal, "#.##") + "%", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+    for yearIdx = 0 to totalActiveYears - 1
+        currentYear = array.get(activeYears, yearIdx)
+        tradesYear = map.contains(yearlyTotalTrades, currentYear) ? map.get(yearlyTotalTrades, currentYear) : 0
+        tp1Year = map.contains(yearlyTP1Count, currentYear) ? map.get(yearlyTP1Count, currentYear) : 0
+        tp1PctYear = tradesYear > 0 ? (tp1Year / tradesYear) * 100 : 0
+        colIndex = 6 + yearIdx
+        cellColor = f_getColorByE(tp1PctYear, ePctGlobal)
+        table.cell(unifiedTable, colIndex, currentRow, str.tostring(tp1PctYear, "#.##") + "%", bgcolor=cellColor, text_color=color.white, text_size=size.small)
     currentRow += 1
 
     
