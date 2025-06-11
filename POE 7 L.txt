@@ -106,12 +106,6 @@ enableMonthlyPanel = input.bool(true, title="📆 Mostrar Panel Mensual", group=
 var int[] activeYears = array.new<int>()
 var int totalActiveYears = 0
 
-if barstate.isfirst
-    array.clear(activeYears)
-    for year = startYear to endYear
-        array.push(activeYears, year)
-    totalActiveYears := array.size(activeYears)
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Bar Limitation Analysis
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -842,8 +836,14 @@ f_getColorByPr(pct) =>
 // ═══════════════════════════════════════════════════════════════════════════════
 
 if barstate.islast and showDetailedStats
+    // Recalcular años activos según las fechas seleccionadas
+    array.clear(activeYears)
+    for year = startYear to endYear
+        array.push(activeYears, year)
+    totalActiveYears := array.size(activeYears)
+
     // Calcular dimensiones dinámicas
-    maxColumns = math.max(4, 1 + (totalActiveYears * 2))  // Máximo entre 4 (global) y columnas anuales/mensuales
+    maxColumns = math.max(4, (totalActiveYears * 2) + 2)  // Espacio extra para evitar errores de índice
     
     // Calcular filas totales
     globalRows = 10
